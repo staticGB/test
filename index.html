@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Collab Canvas</title>
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#1a1a2e;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;color:#eee;touch-action:none;-webkit-user-select:none;user-select:none}
+
+/* ── Layout ── */
+#layout{display:flex;width:100%;height:100%;overflow:hidden}
+#canvas-container{flex:1;position:relative;min-width:0;overflow:hidden}
+#canvas-container canvas{display:block;width:100%;height:100%;cursor:crosshair;touch-action:none}
+
+/* ── Chat panel ── */
+#chat-panel{width:300px;min-width:300px;display:flex;flex-direction:column;background:#16213e;border-left:1px solid rgba(255,255,255,.06);overflow:hidden;flex-shrink:0}
+#chat-header{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.08);font-size:15px;font-weight:600;flex-shrink:0}
+#chat-header .badge{background:#ff6b6b;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;min-width:20px;text-align:center;line-height:1.4}
+#chat-messages{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;gap:6px;min-height:0}
+#chat-messages::-webkit-scrollbar{width:5px}
+#chat-messages::-webkit-scrollbar-track{background:transparent}
+#chat-messages::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:3px}
+.chat-msg{background:rgba(255,255,255,.05);border-radius:8px;padding:8px 10px;animation:fadeIn .2s ease}
+.chat-msg .sender{font-size:11px;font-weight:600;color:#ff6b6b;margin-bottom:2px}
+.chat-msg .text{font-size:13px;line-height:1.4;word-wrap:break-word;color:#eee}
+.chat-msg .time{font-size:10px;color:rgba(255,255,255,.35);margin-top:3px;text-align:right}
+.chat-msg.system{text-align:center;background:transparent;padding:4px}
+.chat-msg.system .text{font-size:11px;color:rgba(255,255,255,.35);font-style:italic}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── Typing indicator ── */
+#typing-indicator{display:none;padding:4px 12px 8px;font-size:11px;color:rgba(255,255,255,.4);font-style:italic;flex-shrink:0;min-height:22px}
+#typing-indicator.show{display:block}
+
+/* ── Chat input area ── */
+#chat-input-area{flex-shrink:0;border-top:1px solid rgba(255,255,255,.08);padding:10px 12px 12px}
+#emoji-row{display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap}
+.emoji-btn{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:6px;padding:4px 8px;font-size:18px;cursor:pointer;transition:background .15s;line-height:1}
+.emoji-btn:hover{background:rgba(255,255,255,.14)}
+#chat-input-wrap{display:flex;gap:8px;align-items:stretch}
+#chat-input{flex:1;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:8px 12px;color:#eee;font-size:13px;outline:none;font-family:inherit;transition:border-color .15s;min-height:36px;resize:none}
+#chat-input:focus{border-color:#ff6b6b}
+#chat-input::placeholder{color:rgba(255,255,255,.3)}
+#chat-send-btn{background:#ff6b6b;border:none;border-radius:8px;color:#fff;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s;white-space:nowrap;font-family:inherit}
+#chat-send-btn:hover{background:#ff5252}
+#chat-send-btn:active{background:#e04848}
+
+/* ── Toolbar / room info (unchanged positioning) ── */
+#toolbar{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#16213e;border-radius:16px;padding:12px 20px;display:flex;align-items:center;gap:14px;box-shadow:0 8px 32px rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.06);z-index:100;flex-wrap:wrap;justify-content:center;backdrop-filter:blur(8px)}
+#toolbar input[type="color"]{-webkit-appearance:none;appearance:none;width:36px;height:36px;border:2px solid rgba(255,255,255,.15);border-radius:50%;cursor:pointer;background:none;padding:2px;flex-shrink:0}
+#toolbar input[type="color"]::-webkit-color-swatch-wrapper{padding:0}
+#toolbar input[type="color"]::-webkit-color-swatch{border:none;border-radius:50%}
+#toolbar input[type="range"]{-webkit-appearance:none;appearance:none;width:80px;height:4px;border-radius:2px;background:rgba(255,255,255,.15);outline:none;cursor:pointer}
+#toolbar input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:50%;background:#ff6b6b;cursor:pointer;border:2px solid #fff}
+#toolbar input[type="range"]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:#ff6b6b;cursor:pointer;border:2px solid #fff}
+.toolbar-btn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);color:#eee;padding:6px 14px;border-radius:8px;font-size:13px;cursor:pointer;transition:all .15s ease;white-space:nowrap;display:flex;align-items:center;gap:6px;height:36px;font-family:inherit}
+.toolbar-btn:hover{background:rgba(255,255,255,.14)}
+.toolbar-btn.active{background:#ff6b6b;border-color:#ff6b6b;color:#fff}
+.toolbar-btn.danger{background:rgba(255,107,107,.2);border-color:rgba(255,107,107,.3)}
+.toolbar-btn.danger:hover{background:rgba(255,107,107,.35)}
+#room-info{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#16213e;border-radius:12px;padding:10px 18px;display:flex;align-items:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.06);z-index:100;font-size:14px;backdrop-filter:blur(8px)}
+#room-id{color:rgba(255,255,255,.7);font-size:13px;font-family:'SF Mono','Fira Code','Cascadia Code',monospace}
+#room-id span{color:#eee;font-weight:600}
+#copy-btn{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.1);color:#eee;padding:4px 10px;border-radius:6px;font-size:12px;cursor:pointer;transition:all .15s ease;font-family:inherit}
+#copy-btn:hover{background:rgba(255,255,255,.16)}
+#copy-btn.copied{background:#2ecc71;border-color:#2ecc71}
+#user-count{display:flex;align-items:center;gap:6px;font-size:13px;color:rgba(255,255,255,.7)}
+#user-count .dot{width:8px;height:8px;border-radius:50%;background:#2ecc71;display:inline-block;animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+#status-bar{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);padding:6px 16px;border-radius:8px;font-size:12px;z-index:99;opacity:0;transition:opacity .3s ease;pointer-events:none;background:rgba(22,33,62,.9);border:1px solid rgba(255,255,255,.08)}
+#status-bar.show{opacity:1}
+.size-label{font-size:12px;color:rgba(255,255,255,.5);min-width:20px;text-align:center}
+.separator{width:1px;height:28px;background:rgba(255,255,255,.08)}
+
+/* ── Responsive: stack vertically on narrow screens ── */
+@media(max-width:768px){
+  #layout{flex-direction:column}
+  #canvas-container{flex:1 1 50%;min-height:50%}
+  #chat-panel{width:100%;min-width:0;flex:1 1 50%;border-left:none;border-top:1px solid rgba(255,255,255,.08)}
+}
+@media(max-width:640px){
+  #toolbar{padding:10px 14px;gap:10px;bottom:16px;border-radius:12px;width:calc(100% - 24px)}
+  #room-info{font-size:12px;padding:8px 12px;top:12px;width:calc(100% - 24px)}
+  #room-id{font-size:11px}
+  #toolbar input[type="range"]{width:60px}
+  .toolbar-btn{padding:5px 10px;font-size:12px;height:32px}
+  #toolbar input[type="color"]{width:30px;height:30px}
+}
+</style>
+</head>
+<body>
+
+<div id="layout">
+  <div id="canvas-container">
+    <canvas id="draw-canvas"></canvas>
+  </div>
+
+  <div id="chat-panel">
+    <div id="chat-header">
+      Chat
+      <span class="badge" id="chat-count">0</span>
+    </div>
+    <div id="chat-messages"></div>
+    <div id="typing-indicator"></div>
+    <div id="chat-input-area">
+      <div id="emoji-row">
+        <button class="emoji-btn" data-emoji="😂">😂</button>
+        <button class="emoji-btn" data-emoji="👍">👍</button>
+        <button class="emoji-btn" data-emoji="🔥">🔥</button>
+        <button class="emoji-btn" data-emoji="👀">👀</button>
+        <button class="emoji-btn" data-emoji="🎨">🎨</button>
+        <button class="emoji-btn" data-emoji="✅">✅</button>
+        <button class="emoji-btn" data-emoji="💀">💀</button>
+      </div>
+      <div id="chat-input-wrap">
+        <input type="text" id="chat-input" placeholder="Type a message..." maxlength="500" autocomplete="off">
+        <button id="chat-send-btn">Send</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="room-info">
+  <span id="room-id">Room: <span id="room-name-display"></span></span>
+  <button id="copy-btn" title="Copy room URL">📋 Copy</button>
+  <span id="user-count"><span class="dot"></span><span id="user-count-num">0</span></span>
+</div>
+
+<div id="status-bar"></div>
+
+<div id="toolbar">
+  <input type="color" id="color-picker" value="#ff6b6b" title="Brush color">
+  <div class="separator"></div>
+  <span class="size-label" id="size-label">4</span>
+  <input type="range" id="brush-size" min="1" max="40" value="4" title="Brush size">
+  <div class="separator"></div>
+  <button class="toolbar-btn" id="eraser-btn" title="Toggle eraser">🧹 Eraser</button>
+  <button class="toolbar-btn" id="undo-btn" title="Undo last stroke">↩ Undo</button>
+  <button class="toolbar-btn danger" id="clear-btn" title="Clear canvas">🗑 Clear</button>
+</div>
+
+<script>
+(function() {
+'use strict';
+
+// ─── DOM refs ────────────────────────────────────────────────
+const canvas = document.getElementById('draw-canvas');
+const ctx = canvas.getContext('2d');
+const roomNameDisplay = document.getElementById('room-name-display');
+const copyBtn = document.getElementById('copy-btn');
+const userCountNum = document.getElementById('user-count-num');
+const colorPicker = document.getElementById('color-picker');
+const brushSize = document.getElementById('brush-size');
+const sizeLabel = document.getElementById('size-label');
+const eraserBtn = document.getElementById('eraser-btn');
+const undoBtn = document.getElementById('undo-btn');
+const clearBtn = document.getElementById('clear-btn');
+const statusBar = document.getElementById('status-bar');
+
+// ─── Chat DOM refs ──────────────────────────────────────────
+const chatMessages = document.getElementById('chat-messages');
+const chatInput = document.getElementById('chat-input');
+const chatSendBtn = document.getElementById('chat-send-btn');
+const chatCount = document.getElementById('chat-count');
+const typingIndicator = document.getElementById('typing-indicator');
+const emojiBtns = document.querySelectorAll('.emoji-btn');
+
+// ─── State ───────────────────────────────────────────────────
+let roomId = '';
+let socket = null;
+let connected = false;
+let isDrawing = false;
+let eraserMode = false;
+let currentStroke = null;
+const strokes = [];
+const undoStack = [];
+let strokeCounter = 0;
+
+// ─── Chat state ──────────────────────────────────────────────
+const chatMessagesList = []; // in-memory only
+let typingTimer = null;
+let typingTimeout = null;
+let lastTypingEmit = 0;
+const TYPING_DEBOUNCE = 1500; // ms before clearing typing status
+
+// ─── Canvas sizing ───────────────────────────────────────────
+function resizeCanvas() {
+  const container = document.getElementById('canvas-container');
+  const dpr = window.devicePixelRatio || 1;
+  const w = container.clientWidth;
+  const h = container.clientHeight;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  ctx.scale(dpr, dpr);
+  canvas._w = w;
+  canvas._h = h;
+  redrawAll();
+}
+
+window.addEventListener('resize', resizeCanvas);
+
+// ─── Drawing ─────────────────────────────────────────────────
+function redrawAll() {
+  const w = canvas._w || canvas.width / (window.devicePixelRatio || 1);
+  const h = canvas._h || canvas.height / (window.devicePixelRatio || 1);
+  ctx.clearRect(0, 0, w, h);
+  for (const s of strokes) {
+    drawStroke(s);
+  }
+}
+
+function drawStroke(s) {
+  if (!s.points || s.points.length === 0) return;
+  ctx.strokeStyle = s.isEraser ? '#1a1a2e' : (s.color || '#ff6b6b');
+  ctx.lineWidth = s.size || 4;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  if (s.points.length === 1) {
+    const p = s.points[0];
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, ctx.lineWidth / 2, 0, Math.PI * 2);
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.fill();
+    return;
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(s.points[0].x, s.points[0].y);
+  for (let i = 1; i < s.points.length; i++) {
+    ctx.lineTo(s.points[i].x, s.points[i].y);
+  }
+  ctx.stroke();
+}
+
+function refPoint(e) {
+  const rect = canvas.getBoundingClientRect();
+  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+}
+
+function startStroke(e) {
+  e.preventDefault();
+  const p = refPoint(e);
+  isDrawing = true;
+  currentStroke = {
+    id: strokeCounter++,
+    points: [p],
+    color: colorPicker.value,
+    size: parseInt(brushSize.value, 10),
+    isEraser: eraserMode
+  };
+  // dot for single-point tap
+  drawDot(currentStroke);
+}
+
+function drawDot(s) {
+  if (s.points.length !== 1) return;
+  const p = s.points[0];
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, (s.size || 4) / 2, 0, Math.PI * 2);
+  ctx.fillStyle = s.isEraser ? '#1a1a2e' : s.color;
+  ctx.fill();
+}
+
+function moveStroke(e) {
+  e.preventDefault();
+  if (!isDrawing || !currentStroke) return;
+  const p = refPoint(e);
+  const pts = currentStroke.points;
+  const last = pts[pts.length - 1];
+  if (last && last.x === p.x && last.y === p.y) return; // no-op
+  pts.push(p);
+  ctx.beginPath();
+  ctx.moveTo(last.x, last.y);
+  ctx.lineTo(p.x, p.y);
+  ctx.strokeStyle = currentStroke.isEraser ? '#1a1a2e' : currentStroke.color;
+  ctx.lineWidth = currentStroke.size;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.stroke();
+}
+
+function endStroke() {
+  if (!isDrawing || !currentStroke) return;
+  isDrawing = false;
+  const s = currentStroke;
+  strokes.push(s);
+  undoStack.push(s);
+  if (undoStack.length > 50) undoStack.shift();
+  sendStroke(s);
+  currentStroke = null;
+}
+
+// ─── Socket IO ───────────────────────────────────────────────
+function connectSocket(room) {
+  if (socket && socket.connected) socket.disconnect();
+
+  socket = io('wss://oss-collab.excalidraw.com', {
+    transports: ['websocket'],
+    upgrade: false,
+    forceNew: true
+  });
+
+  socket.on('connect', () => {
+    connected = true;
+    socket.emit('join-room', room);
+    showStatus('Connected');
+    addSystemChatMsg('You joined the room');
+  });
+
+  socket.on('disconnect', () => {
+    connected = false;
+    showStatus('Disconnected');
+  });
+
+  socket.on('connect_error', (err) => {
+    showStatus('Connection error');
+    console.warn(err);
+  });
+
+  socket.on('client-broadcast', (data, iv) => handleIncoming(data, iv));
+  socket.on('room-user-change', (users) => {
+    userCountNum.textContent = Array.isArray(users) ? users.length : 0;
+  });
+  socket.on('new-user', () => {
+    showStatus('New user joined — syncing');
+    setTimeout(() => rebroadcastAll(), 400);
+  });
+}
+
+function encode(obj) {
+  const buf = new TextEncoder().encode(JSON.stringify(obj)).buffer;
+  return { data: buf, iv: new Uint8Array(12) };
+}
+
+function decode(data, iv) {
+  return JSON.parse(new TextDecoder().decode(new Uint8Array(data)));
+}
+
+function sendStroke(s) {
+  if (!connected || !socket) return;
+  const p = encode({ type: 'stroke', stroke: { id: s.id, points: s.points, color: s.color, size: s.size, isEraser: s.isEraser } });
+  socket.emit('server-volatile-broadcast', roomId, p.data, p.iv);
+}
+
+function sendUndo(sid) {
+  if (!connected || !socket) return;
+  const p = encode({ type: 'undo', strokeId: sid });
+  socket.emit('server-volatile-broadcast', roomId, p.data, p.iv);
+}
+
+function sendClear() {
+  if (!connected || !socket) return;
+  const p = encode({ type: 'clear' });
+  socket.emit('server-volatile-broadcast', roomId, p.data, p.iv);
+}
+
+function rebroadcastAll() {
+  if (!connected || !socket) return;
+  const list = strokes.map(s => ({ id: s.id, points: s.points, color: s.color, size: s.size, isEraser: s.isEraser }));
+  const p = encode({ type: 'sync-all', strokes: list });
+  socket.emit('server-broadcast', roomId, p.data, p.iv);
+}
+
+function handleIncoming(data, iv) {
+  let msg;
+  try { msg = decode(data, iv); } catch (e) { return; }
+  if (!msg || !msg.type) return;
+
+  if (msg.type === 'stroke' && msg.stroke) {
+    const s = msg.stroke;
+    if (strokes.some(ex => ex.id === s.id)) return;
+    s.id = strokeCounter++;
+    strokes.push(s);
+    undoStack.push(s);
+    if (undoStack.length > 50) undoStack.shift();
+    drawStroke(s);
+  } else if (msg.type === 'undo') {
+    const idx = strokes.findIndex(s => s.id === msg.strokeId);
+    if (idx === -1) return;
+    strokes.splice(idx, 1);
+    const uidx = undoStack.findIndex(s => s.id === msg.strokeId);
+    if (uidx !== -1) undoStack.splice(uidx, 1);
+    redrawAll();
+  } else if (msg.type === 'clear') {
+    strokes.length = 0;
+    undoStack.length = 0;
+    redrawAll();
+    showStatus('Cleared by another user');
+  } else if (msg.type === 'sync-all' && Array.isArray(msg.strokes)) {
+    let added = 0;
+    for (const s of msg.strokes) {
+      if (strokes.some(ex => ex.id === s.id)) continue;
+      s.id = strokeCounter++;
+      strokes.push(s);
+      undoStack.push(s);
+      if (undoStack.length > 50) undoStack.shift();
+      added++;
+    }
+    if (added > 0) { redrawAll(); showStatus('Synced ' + added + ' stroke(s)'); }
+  } else if (msg.type === 'chat') {
+    // Chat message from another user — don't re-add our own (already added locally)
+    const existing = chatMessagesList.some(m => m.timestamp === msg.timestamp && m.sender === msg.sender && m.text === msg.text);
+    if (!existing) {
+      addChatMsg(msg.sender, msg.text, msg.timestamp, false);
+    }
+  } else if (msg.type === 'typing') {
+    // Show typing indicator from other users
+    const sender = msg.sender;
+    if (sender && sender !== getMySenderId()) {
+      showTypingIndicator(sender);
+    }
+  }
+}
+
+// ─── Chat functions ──────────────────────────────────────────
+function getMySenderId() {
+  return socket && socket.id ? socket.id.substring(0, 4) : '??';
+}
+
+function addChatMsg(sender, text, timestamp, isOwn) {
+  const msg = { sender, text, timestamp: timestamp || Date.now() };
+  chatMessagesList.push(msg);
+  renderChatMsg(msg);
+  updateChatCount();
+  if (!isOwn) {
+    // Auto-scroll to bottom
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+}
+
+function addSystemChatMsg(text) {
+  const msg = { sender: '', text, timestamp: Date.now(), system: true };
+  chatMessagesList.push(msg);
+  renderChatMsg(msg);
+  updateChatCount();
+}
+
+function renderChatMsg(msg) {
+  const div = document.createElement('div');
+  div.className = 'chat-msg' + (msg.system ? ' system' : '');
+
+  if (msg.system) {
+    div.innerHTML = '<div class="text">' + escapeHtml(msg.text) + '</div>';
+  } else {
+    const t = new Date(msg.timestamp);
+    const timeStr = t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0');
+    div.innerHTML = '<div class="sender">' + escapeHtml(msg.sender) + '</div>' +
+      '<div class="text">' + escapeHtml(msg.text) + '</div>' +
+      '<div class="time">' + timeStr + '</div>';
+  }
+
+  chatMessages.appendChild(div);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function updateChatCount() {
+  chatCount.textContent = chatMessagesList.length;
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function sendChatMessage(text) {
+  if (!connected || !socket) return;
+  const trimmed = text.trim();
+  if (!trimmed) return;
+
+  const sender = getMySenderId();
+  const timestamp = Date.now();
+  const msg = { type: 'chat', sender, text: trimmed, timestamp };
+
+  // Add locally immediately
+  addChatMsg(sender, trimmed, timestamp, true);
+
+  // Broadcast via socket
+  const p = encode(msg);
+  socket.emit('server-volatile-broadcast', roomId, p.data, p.iv);
+
+  chatInput.value = '';
+  chatInput.focus();
+  stopTyping();
+}
+
+// ─── Typing indicator ────────────────────────────────────────
+function emitTyping() {
+  if (!connected || !socket) return;
+  const now = Date.now();
+  if (now - lastTypingEmit < 800) return; // throttle emits
+  lastTypingEmit = now;
+  const p = encode({ type: 'typing', sender: getMySenderId() });
+  // Use volatile so typing is fire-and-forget
+  socket.volatile ? socket.volatile.emit('server-volatile-broadcast', roomId, p.data, p.iv) : socket.emit('server-volatile-broadcast', roomId, p.data, p.iv);
+}
+
+function startTyping() {
+  clearTimeout(typingTimer);
+  emitTyping();
+}
+
+function stopTyping() {
+  clearTimeout(typingTimer);
+}
+
+// Typing indicator from others (shown in chat panel)
+const typingTimers = {};
+function showTypingIndicator(sender) {
+  typingIndicator.textContent = sender + ' is typing...';
+  typingIndicator.classList.add('show');
+
+  clearTimeout(typingTimers[sender]);
+  typingTimers[sender] = setTimeout(() => {
+    hideTypingIndicator();
+  }, 2000);
+}
+
+function hideTypingIndicator() {
+  typingIndicator.classList.remove('show');
+  typingIndicator.textContent = '';
+}
+
+// ─── Room ────────────────────────────────────────────────────
+function initRoom() {
+  const hash = window.location.hash;
+  let room;
+  if (hash && hash.includes('roomId=')) {
+    room = new URLSearchParams(hash.slice(1)).get('roomId');
+  }
+  if (!room) {
+    room = Array.from({length:8},()=>'abcdefghijklmnopqrstuvwxyz0123456789'[Math.random()*36|0]).join('');
+    window.location.hash = 'roomId=' + room;
+  }
+  roomId = room;
+  roomNameDisplay.textContent = roomId;
+  document.title = 'Canvas: ' + roomId;
+  resizeCanvas();
+  connectSocket(roomId);
+}
+
+// ─── UI helpers ──────────────────────────────────────────────
+let statusTimer;
+function showStatus(msg) {
+  statusBar.textContent = msg;
+  statusBar.classList.add('show');
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => statusBar.classList.remove('show'), 3000);
+}
+
+// ─── Undo / Clear ────────────────────────────────────────────
+function doUndo() {
+  if (undoStack.length === 0) return;
+  const s = undoStack.pop();
+  const idx = strokes.findIndex(x => x.id === s.id);
+  if (idx !== -1) strokes.splice(idx, 1);
+  redrawAll();
+  sendUndo(s.id);
+}
+
+function doClear() {
+  if (strokes.length === 0) return;
+  if (!confirm('Clear all strokes?')) return;
+  strokes.length = 0;
+  undoStack.length = 0;
+  redrawAll();
+  sendClear();
+  showStatus('Canvas cleared');
+}
+
+// ─── Wire up UI ──────────────────────────────────────────────
+canvas.addEventListener('pointerdown', startStroke);
+canvas.addEventListener('pointermove', moveStroke);
+canvas.addEventListener('pointerup', endStroke);
+canvas.addEventListener('pointerleave', endStroke);
+canvas.addEventListener('pointercancel', endStroke);
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+eraserBtn.addEventListener('click', () => {
+  eraserMode = !eraserMode;
+  eraserBtn.classList.toggle('active', eraserMode);
+  canvas.style.cursor = eraserMode ? 'cell' : 'crosshair';
+});
+
+undoBtn.addEventListener('click', doUndo);
+clearBtn.addEventListener('click', doClear);
+
+colorPicker.addEventListener('input', () => {
+  if (eraserMode) {
+    eraserMode = false;
+    eraserBtn.classList.remove('active');
+    canvas.style.cursor = 'crosshair';
+  }
+});
+
+brushSize.addEventListener('input', () => {
+  sizeLabel.textContent = brushSize.value;
+});
+
+copyBtn.addEventListener('click', () => {
+  const url = window.location.href;
+  const doCopy = (text) => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => copyDone()).catch(() => fallbackCopy(text));
+    } else {
+      fallbackCopy(text);
+    }
+  };
+  const copyDone = () => {
+    copyBtn.textContent = '✓ Copied!';
+    copyBtn.classList.add('copied');
+    setTimeout(() => { copyBtn.textContent = '📋 Copy'; copyBtn.classList.remove('copied'); }, 2000);
+  };
+  const fallbackCopy = (text) => {
+    const ta = document.createElement('textarea');
+    ta.value = url;
+    ta.style.cssText = 'position:fixed;left:-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); copyDone(); } catch(e) { showStatus('Copy failed'); }
+    document.body.removeChild(ta);
+  };
+  doCopy(url);
+});
+
+// ─── Wire up Chat UI ─────────────────────────────────────────
+chatSendBtn.addEventListener('click', () => {
+  sendChatMessage(chatInput.value);
+});
+
+chatInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendChatMessage(chatInput.value);
+  }
+});
+
+// Typing detection on input
+chatInput.addEventListener('input', () => {
+  if (chatInput.value.trim()) {
+    startTyping();
+    // Clear typing after pause
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => {
+      stopTyping();
+    }, TYPING_DEBOUNCE);
+  } else {
+    stopTyping();
+  }
+});
+
+// Emoji picker
+emojiBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const emoji = btn.getAttribute('data-emoji');
+    const cursorPos = chatInput.selectionStart;
+    const val = chatInput.value;
+    chatInput.value = val.substring(0, cursorPos) + emoji + val.substring(cursorPos);
+    chatInput.focus();
+    chatInput.selectionStart = chatInput.selectionEnd = cursorPos + emoji.length;
+    // Trigger typing
+    startTyping();
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => {
+      stopTyping();
+    }, TYPING_DEBOUNCE);
+  });
+});
+
+// ─── Boot ────────────────────────────────────────────────────
+initRoom();
+
+})();
+</script>
+</body>
+</html>
