@@ -3,728 +3,647 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Collab Tunnel — Excalidraw Canvas + Chat</title>
+<title>Collab Code</title>
+<!-- Socket.IO -->
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<!-- QRCode.js -->
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, sans-serif; background: #1a1a2e; color: #eee; overflow: hidden; height: 100vh; }
-#app { display: flex; height: 100vh; }
-#canvas-wrap { flex: 1; position: relative; display: flex; flex-direction: column; min-width: 0; }
-#canvas-wrap canvas { flex: 1; display: block; cursor: crosshair; background: #1a1a2e; }
-#toolbar { background: #16213e; padding: 8px 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border-bottom: 1px solid #0f3460; }
-#toolbar button, #toolbar input, #toolbar label { font-size: 13px; }
-#toolbar button { background: #0f3460; color: #eee; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; }
-#toolbar button:hover { background: #1a4a7a; }
-#toolbar button.active { background: #ff6b6b; color: #fff; }
-#toolbar input[type="color"] { width: 30px; height: 30px; border: none; padding: 0; cursor: pointer; background: transparent; }
-#toolbar input[type="range"] { width: 80px; vertical-align: middle; }
-#toolbar .sep { width: 1px; height: 24px; background: #0f3460; display: inline-block; }
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif;background:#1a1a2e;color:#eee;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+.hidden{display:none!important}
 
-#chat-panel { width: 300px; display: flex; flex-direction: column; border-left: 1px solid #0f3460; background: #16213e; flex-shrink: 0; }
-#chat-header { padding: 10px 12px; border-bottom: 1px solid #0f3460; font-size: 13px; display: flex; align-items: center; justify-content: space-between; }
-#chat-header .badge { font-size: 11px; background: #ff6b6b; color: #fff; padding: 2px 7px; border-radius: 8px; }
-#chat-header .user-count { font-size: 12px; color: #aaa; }
-#chat-messages { flex: 1; overflow-y: auto; padding: 8px 12px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
-#chat-messages .msg { word-break: break-word; }
-#chat-messages .msg .meta { font-size: 11px; color: #888; }
-#chat-messages .msg .meta .sender { color: #ff6b6b; }
-#chat-messages .msg .text { color: #eee; }
-#chat-messages .typing { font-style: italic; color: #888; font-size: 12px; min-height: 18px; }
-#chat-input-wrap { padding: 8px 12px; border-top: 1px solid #0f3460; display: flex; gap: 6px; }
-#chat-input-wrap input { flex: 1; background: #0f3460; border: none; color: #eee; padding: 7px 10px; border-radius: 4px; font-size: 13px; outline: none; }
-#chat-input-wrap input::placeholder { color: #666; }
-#chat-input-wrap button { background: #ff6b6b; color: #fff; border: none; padding: 7px 14px; border-radius: 4px; cursor: pointer; font-size: 13px; }
-#chat-input-wrap button:hover { background: #e05555; }
-#emoji-row { padding: 4px 12px 8px; display: flex; gap: 6px; flex-wrap: wrap; }
-#emoji-row span { cursor: pointer; font-size: 18px; line-height: 1; }
-#emoji-row span:hover { transform: scale(1.2); }
+/* Toolbar */
+.toolbar{background:#16213e;padding:8px 16px;display:flex;align-items:center;gap:12px;border-bottom:1px solid #2a2a4a;flex-shrink:0;flex-wrap:wrap;min-height:48px}
+.toolbar .logo{font-weight:700;font-size:16px;color:#ff6b6b;letter-spacing:0.5px}
+.toolbar .sep{width:1px;height:24px;background:#2a2a4a}
+.toolbar .status{font-size:12px;padding:3px 8px;border-radius:4px;background:#1a1a2e}
+.toolbar .status.connected{color:#4ade80}
+.toolbar .status.connecting{color:#facc15}
+.toolbar .status.disconnected{color:#f87171}
+.toolbar .room-info{font-size:13px;color:#999}
+.toolbar .room-info strong{color:#eee}
+.toolbar .badge{font-size:10px;padding:2px 6px;border-radius:3px;font-weight:600}
+.toolbar .badge.host{background:#ff6b6b;color:#fff}
+.toolbar .badge.peer{background:#4a6fa5;color:#fff}
+.toolbar .user-count{font-size:12px;color:#aaa}
+.toolbar button{background:#2a2a4a;border:none;color:#eee;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:12px;transition:background .2s}
+.toolbar button:hover{background:#3a3a5a}
+.toolbar button.primary{background:#ff6b6b;color:#fff}
+.toolbar button.primary:hover{background:#e05555}
+.toolbar .spacer{flex:1}
 
-#status-bar { height: 24px; background: #0f3460; display: flex; align-items: center; padding: 0 12px; font-size: 12px; color: #aaa; gap: 12px; }
-#status-bar .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
-#status-bar .dot.connected { background: #4caf50; }
-#status-bar .dot.connecting { background: #ff9800; animation: pulse 1s infinite; }
-#status-bar .dot.disconnected { background: #f44336; }
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+/* Main split layout */
+.main-split{flex:1;display:flex;overflow:hidden;min-height:0}
+@media(max-width:768px){.main-split{flex-direction:column}}
 
-#room-info { display: flex; align-items: center; gap: 8px; }
-#room-info .room-id { color: #aaa; font-size: 12px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#room-info button { background: transparent; border: 1px solid #0f3460; color: #aaa; padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 11px; }
-#room-info button:hover { border-color: #ff6b6b; color: #fff; }
+/* Editor pane */
+.editor-pane{width:60%;display:flex;flex-direction:column;border-right:1px solid #2a2a4a;overflow:hidden}
+@media(max-width:768px){.editor-pane{width:100%;height:50%;border-right:none;border-bottom:1px solid #2a2a4a}}
 
-#no-hash { display: none; position: absolute; inset: 0; background: #1a1a2e; color: #eee; align-items: center; justify-content: center; flex-direction: column; gap: 20px; z-index: 100; text-align: center; padding: 40px; }
-#no-hash h1 { color: #ff6b6b; font-size: 24px; }
-#no-hash p { max-width: 500px; line-height: 1.6; color: #aaa; font-size: 14px; }
-#no-hash code { background: #16213e; padding: 2px 6px; border-radius: 3px; font-size: 13px; color: #ff6b6b; }
+.pane-header{background:#16213e;padding:6px 12px;font-size:12px;font-weight:600;color:#aaa;display:flex;align-items:center;gap:8px;border-bottom:1px solid #2a2a4a;flex-shrink:0}
+.pane-header .pane-title{color:#eee;font-size:13px}
+.pane-header .pane-actions{margin-left:auto;display:flex;gap:4px}
+.pane-header button{background:transparent;border:1px solid #2a2a4a;color:#aaa;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:11px}
+.pane-header button:hover{background:#2a2a4a;color:#eee}
 
-@media (max-width: 767px) {
-  #app { flex-direction: column; }
-  #chat-panel { width: 100%; height: 40vh; border-left: none; border-top: 1px solid #0f3460; }
-  #canvas-wrap { height: 60vh; }
-}
+.editor-wrap{flex:1;display:flex;position:relative;overflow:hidden;min-height:0;background:#0d1117}
+.gutter{width:44px;background:#0d1117;color:#484f58;text-align:right;padding:10px 6px 10px 0;font-family:'JetBrains Mono','Fira Code','Cascadia Code',monospace;font-size:14px;line-height:1.5;overflow:hidden;user-select:none;flex-shrink:0;border-right:1px solid #1a1a2e;white-space:nowrap}
+.gutter div{padding-right:4px}
+.editor-textarea-wrap{flex:1;position:relative}
+.editor-textarea-wrap textarea{position:absolute;top:0;left:0;width:100%;height:100%;background:transparent;border:none;outline:none;resize:none;color:#eee;font-family:'JetBrains Mono','Fira Code','Cascadia Code',monospace;font-size:14px;line-height:1.5;padding:10px 12px;tab-size:4;-moz-tab-size:4;white-space:pre;overflow-wrap:normal;overflow-x:auto;overflow-y:auto}
+.editor-textarea-wrap textarea::placeholder{color:#484f58}
 
-/* ─── Share Modal ─────────────────────────────────────────── */
-.modal-overlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.6);
-  z-index: 1000;
-  align-items: center;
-  justify-content: center;
-}
-.modal-overlay.open { display: flex; }
-.share-modal {
-  background: #1a1a2e;
-  border: 1px solid #0f3460;
-  border-radius: 14px;
-  padding: 28px 24px 22px;
-  max-width: 400px;
-  width: 90%;
-  box-shadow: 0 12px 40px rgba(0,0,0,0.5);
-  position: relative;
-  text-align: center;
-}
-.share-modal h2 {
-  font-size: 22px;
-  color: #ff6b6b;
-  margin-bottom: 16px;
-  font-weight: 700;
-}
-.share-modal .room-url {
-  display: block;
-  background: #16213e;
-  border: 1px solid #0f3460;
-  border-radius: 6px;
-  padding: 10px 12px;
-  font-size: 13px;
-  color: #eee;
-  word-break: break-all;
-  text-align: left;
-  margin-bottom: 18px;
-  cursor: text;
-  user-select: all;
-}
-.share-modal .qr-container {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 18px;
-  min-height: 160px;
-}
-.share-modal .qr-container canvas,
-.share-modal .qr-container img {
-  border-radius: 8px;
-}
-.share-modal .modal-actions {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-}
-.share-modal .modal-actions button {
-  padding: 8px 20px;
-  border-radius: 6px;
-  border: none;
-  font-size: 13px;
-  cursor: pointer;
-  font-weight: 600;
-}
-.share-modal .btn-copy {
-  background: #ff6b6b;
-  color: #fff;
-}
-.share-modal .btn-copy:hover { background: #e05555; }
-.share-modal .btn-close {
-  background: #0f3460;
-  color: #eee;
-}
-.share-modal .btn-close:hover { background: #1a4a7a; }
-.share-modal .close-x {
-  position: absolute;
-  top: 10px;
-  right: 14px;
-  background: none;
-  border: none;
-  color: #888;
-  font-size: 20px;
-  cursor: pointer;
-  line-height: 1;
-  padding: 4px;
-}
-.share-modal .close-x:hover { color: #ff6b6b; }
+/* Preview pane */
+.preview-pane{flex:1;display:flex;flex-direction:column;overflow:hidden}
+@media(max-width:768px){.preview-pane{width:100%;height:50%}}
+.preview-pane iframe{flex:1;width:100%;border:none;background:#fff}
+
+/* Chat panel */
+.chat-panel{background:#16213e;border-top:1px solid #2a2a4a;flex-shrink:0;max-height:220px;display:flex;flex-direction:column;transition:max-height .3s}
+.chat-panel.collapsed{max-height:36px}
+.chat-header{display:flex;align-items:center;gap:8px;padding:6px 12px;cursor:pointer;border-bottom:1px solid #2a2a4a;flex-shrink:0}
+.chat-header span{font-size:12px;font-weight:600;color:#aaa}
+.chat-header .chat-toggle{font-size:10px;color:#666;margin-left:auto;transition:transform .3s}
+.chat-panel.collapsed .chat-toggle{transform:rotate(-90deg)}
+.chat-body{flex:1;display:flex;flex-direction:column;overflow:hidden;min-height:0}
+.chat-messages{flex:1;overflow-y:auto;padding:8px 12px;font-size:13px;line-height:1.4;min-height:0}
+.chat-messages .msg{margin-bottom:4px;word-break:break-word}
+.chat-messages .msg .sender{color:#ff6b6b;font-weight:600;font-size:11px}
+.chat-messages .msg .time{color:#666;font-size:10px;margin-left:4px}
+.chat-messages .msg .text{color:#ccc}
+.chat-messages .typing-indicator{color:#888;font-size:11px;font-style:italic;padding:2px 0}
+.chat-input-row{display:flex;align-items:center;gap:4px;padding:4px 8px;border-top:1px solid #2a2a4a;flex-shrink:0}
+.chat-input-row input{flex:1;background:#0d1117;border:1px solid #2a2a4a;border-radius:4px;color:#eee;padding:6px 8px;font-size:13px;outline:none}
+.chat-input-row input:focus{border-color:#ff6b6b}
+.chat-input-row .emoji-btn{background:transparent;border:none;color:#aaa;cursor:pointer;font-size:16px;padding:2px 4px;border-radius:3px;line-height:1}
+.chat-input-row .emoji-btn:hover{background:#2a2a4a}
+.emoji-picker{display:flex;gap:2px;padding:4px 8px;border-top:1px solid #2a2a4a;flex-shrink:0;flex-wrap:wrap}
+.emoji-picker button{background:transparent;border:none;font-size:18px;cursor:pointer;padding:2px 5px;border-radius:3px;line-height:1}
+.emoji-picker button:hover{background:#2a2a4a}
+
+/* Share modal */
+.modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:1000}
+.modal{background:#16213e;border:1px solid #2a2a4a;border-radius:12px;padding:24px;max-width:360px;width:90%;text-align:center}
+.modal h3{color:#eee;margin-bottom:12px;font-size:16px}
+.modal p{color:#aaa;font-size:12px;margin-bottom:16px;word-break:break-all}
+.modal .qr-wrap{display:flex;justify-content:center;margin-bottom:16px}
+.modal .qr-wrap canvas,.modal .qr-wrap img{border-radius:8px;background:#fff;padding:8px}
+.modal button{background:#ff6b6b;border:none;color:#fff;padding:8px 20px;border-radius:6px;cursor:pointer;font-size:13px;margin:4px}
+.modal button:hover{background:#e05555}
+.modal button.secondary{background:#2a2a4a;color:#eee}
+.modal button.secondary:hover{background:#3a3a5a}
+
+/* Overlay for first-time share */
+.welcome-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:998;display:none}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#2a2a4a;border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:#3a3a5a}
 </style>
 </head>
 <body>
-<div id="app">
-  <div id="canvas-wrap">
-    <div id="toolbar">
-      <input type="color" id="colorPicker" value="#ff6b6b" title="Color">
-      <label style="color:#aaa;font-size:12px">Size</label>
-      <input type="range" id="sizeSlider" min="1" max="40" value="3" title="Brush size">
-      <span id="sizeLabel" style="color:#aaa;font-size:11px;min-width:20px">3</span>
-      <span class="sep"></span>
-      <button id="eraserBtn" title="Eraser">Eraser</button>
-      <button id="undoBtn" title="Undo last stroke">Undo</button>
-      <button id="clearBtn" title="Clear canvas">Clear</button>
-      <span style="flex:1"></span>
-      <div id="room-info">
-        <span class="room-id" id="roomIdDisplay">—</span>
-        <span id="roleBadge"></span>
-        <button id="shareBtn" title="Share room">🔗 Share</button>
-      </div>
-    </div>
-    <canvas id="canvas"></canvas>
-    <div id="no-hash">
-      <h1>🔗 Collab Tunnel</h1>
-      <p>To use this collaborative canvas, open it via an Excalidraw collaboration link:</p>
-      <p><code>https://staticgb.github.io/excalidraw/#room=&lt;roomId&gt;,&lt;roomKey&gt;</code></p>
-      <p>Or create a room by adding a custom <code>#room=yourId,yourKey</code> hash to this page's URL.</p>
-    </div>
-  </div>
-  <div id="chat-panel">
-    <div id="chat-header">
-      <span>💬 Chat <span class="user-count" id="userCount">(0)</span></span>
-      <span class="badge" id="roleBadgeSmall">Peer</span>
-    </div>
-    <div id="chat-messages">
-      <div class="typing" id="typingIndicator"></div>
-    </div>
-    <div id="emoji-row">
-      <span data-emoji="😂">😂</span>
-      <span data-emoji="👍">👍</span>
-      <span data-emoji="🔥">🔥</span>
-      <span data-emoji="👀">👀</span>
-      <span data-emoji="🎨">🎨</span>
-      <span data-emoji="✅">✅</span>
-      <span data-emoji="💀">💀</span>
-    </div>
-    <div id="chat-input-wrap">
-      <input type="text" id="chatInput" placeholder="Type a message..." maxlength="500">
-      <button id="sendBtn">Send</button>
-    </div>
-  </div>
-</div>
-<div id="status-bar">
-  <span><span class="dot connecting" id="statusDot"></span><span id="statusText">Connecting...</span></span>
+
+<!-- Toolbar -->
+<div class="toolbar">
+  <div class="logo">⚡ CC</div>
+  <div class="sep"></div>
+  <div class="status disconnected" id="statusBadge">Connecting...</div>
+  <div class="sep"></div>
+  <div class="room-info" id="roomInfo">Room: <strong id="roomDisplay">—</strong></div>
+  <span class="badge peer hidden" id="roleBadge">Peer</span>
+  <div class="user-count" id="userCount"></div>
+  <div class="spacer"></div>
+  <button onclick="shareRoom()">📋 Share</button>
+  <button onclick="refreshPreview()">🔄 Refresh</button>
 </div>
 
-<!-- ─── Share Modal ────────────────────────────────────────── -->
-<div class="modal-overlay" id="shareOverlay">
-  <div class="share-modal" id="shareModal">
-    <button class="close-x" id="modalCloseX" aria-label="Close">&times;</button>
-    <h2>Share Room</h2>
-    <code class="room-url" id="roomUrlDisplay"></code>
-    <div class="qr-container" id="qrContainer"></div>
-    <div class="modal-actions">
-      <button class="btn-copy" id="modalCopyBtn">📋 Copy Link</button>
-      <button class="btn-close" id="modalCloseBtn">Close</button>
+<!-- Main Split -->
+<div class="main-split">
+  <!-- Editor -->
+  <div class="editor-pane">
+    <div class="pane-header">
+      <span class="pane-title">✏️ HTML</span>
+      <div class="pane-actions">
+        <button onclick="clearEditor()">Clear</button>
+        <button onclick="resetDefault()">Reset</button>
+      </div>
     </div>
+    <div class="editor-wrap">
+      <div class="gutter" id="gutter"></div>
+      <div class="editor-textarea-wrap">
+        <textarea id="codeEditor" spellcheck="false" placeholder="Write HTML/CSS/JS here..." oninput="onCodeChange()" onkeydown="handleTab(event)"></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- Preview -->
+  <div class="preview-pane">
+    <div class="pane-header">
+      <span class="pane-title">🔍 Preview</span>
+      <div class="pane-actions">
+        <button onclick="refreshPreview()">🔄 Refresh</button>
+      </div>
+    </div>
+    <iframe id="preview" sandbox="allow-scripts allow-modals allow-same-origin"></iframe>
+  </div>
+</div>
+
+<!-- Chat Panel -->
+<div class="chat-panel" id="chatPanel">
+  <div class="chat-header" onclick="toggleChat()">
+    <span>💬 Chat</span>
+    <span style="font-size:11px;color:#666" id="chatUserCount"></span>
+    <span class="chat-toggle">▼</span>
+  </div>
+  <div class="chat-body">
+    <div class="chat-messages" id="chatMessages"><div class="msg" style="color:#888;font-size:12px">Connect to share. Anyone with the link joins your room.</div></div>
+    <div class="chat-input-row">
+      <button class="emoji-btn" onclick="toggleEmojiPicker()">😊</button>
+      <input type="text" id="chatInput" placeholder="Type a message..." onkeydown="onChatKey(event)">
+    </div>
+    <div class="emoji-picker hidden" id="emojiPicker">
+      <button onclick="sendEmoji('😂')">😂</button>
+      <button onclick="sendEmoji('👍')">👍</button>
+      <button onclick="sendEmoji('🔥')">🔥</button>
+      <button onclick="sendEmoji('👀')">👀</button>
+      <button onclick="sendEmoji('🎨')">🎨</button>
+      <button onclick="sendEmoji('✅')">✅</button>
+      <button onclick="sendEmoji('💀')">💀</button>
+    </div>
+  </div>
+</div>
+
+<!-- Share Modal -->
+<div class="modal-overlay hidden" id="shareModal">
+  <div class="modal">
+    <h3>🔗 Share Room</h3>
+    <p style="font-size:11px;color:#888">Send this link — anyone who opens it joins your room automatically.</p>
+    <p id="shareLink">Loading...</p>
+    <div class="qr-wrap" id="qrcode"></div>
+    <button onclick="copyShareLink()">📋 Copy Link</button>
+    <button class="secondary" onclick="closeShareModal()">Close</button>
   </div>
 </div>
 
 <script>
-(function() {
-'use strict';
+// ====== STATE ======
+const DEFAULT_HTML = `<!DOCTYPE html>
+<html>
+<head>
+  <title>Collab Code</title>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; background: #1a1a2e; color: #eee; }
+  </style>
+</head>
+<body>
+  <h1>Hello, world!</h1>
+  <p>Start editing...</p>
+</body>
+</html>`;
 
-// ─── Parse URL ────────────────────────────────────────────────
-let roomId = null, roomKey = null;
-const hash = window.location.hash;
-const noHash = document.getElementById('no-hash');
-
-if (hash && hash.startsWith('#room=')) {
-  const after = hash.slice(6);
-  const commaIdx = after.indexOf(',');
-  if (commaIdx > 0 && commaIdx < after.length - 1) {
-    roomId = after.slice(0, commaIdx);
-    roomKey = after.slice(commaIdx + 1);
-  }
-}
-
-if (!roomId || !roomKey) {
-  noHash.style.display = 'flex';
-  document.getElementById('canvas').style.display = 'none';
-  document.getElementById('toolbar').style.display = 'none';
-  document.getElementById('status-bar').querySelector('span').innerHTML = 'No room hash found';
-  return;
-}
-
-document.getElementById('roomIdDisplay').textContent = roomId;
-document.getElementById('statusText').textContent = 'Connecting...';
-document.getElementById('statusDot').className = 'dot connecting';
-
-// ─── DOM refs ──────────────────────────────────────────────────
-const canvas = document.getElementById('canvas');
-const ctx = canvas.getContext('2d');
-const colorPicker = document.getElementById('colorPicker');
-const sizeSlider = document.getElementById('sizeSlider');
-const sizeLabel = document.getElementById('sizeLabel');
-const eraserBtn = document.getElementById('eraserBtn');
-const undoBtn = document.getElementById('undoBtn');
-const clearBtn = document.getElementById('clearBtn');
-const chatMessages = document.getElementById('chat-messages');
-const chatInput = document.getElementById('chatInput');
-const sendBtn = document.getElementById('sendBtn');
-const userCountSpan = document.getElementById('userCount');
-const shareBtn = document.getElementById('shareBtn');
-const roleBadge = document.getElementById('roleBadge');
-const roleBadgeSmall = document.getElementById('roleBadgeSmall');
-const typingIndicator = document.getElementById('typingIndicator');
-
-// ─── State ─────────────────────────────────────────────────────
+let currentCode = DEFAULT_HTML;
+let socket = null;
+let roomId = '';
+let roomKey = '';
 let isHost = false;
-let mySocketId = null;
-let strokes = [];
-let chatHistory = [];
-let strokeIdSet = new Set();
-let drawing = false;
-let currentPoints = [];
-let isEraser = false;
-let brushColor = '#ff6b6b';
-let brushSize = 3;
-let undoStack = []; // last 50 stroke IDs
+let userId = '';
+let users = [];
+let chatMessages = [];
+let codeSendTimer = null;
+let previewTimer = null;
+let isTyping = false;
+let typingTimeout = null;
+let emojiPickerVisible = false;
+let connected = false;
+let firstLoad = true;
 
-// Typing debounce
-let typingTimer = null;
-let typingSender = null;
-
-// Canvas resize
-function resizeCanvas() {
-  const wrap = canvas.parentElement;
-  canvas.width = wrap.clientWidth;
-  canvas.height = wrap.clientHeight;
-  redrawAllStrokes();
+// ====== CRYPTO ======
+async function getKeyFromPass(pass) {
+  const enc = new TextEncoder();
+  const hash = await crypto.subtle.digest('SHA-256', enc.encode(pass));
+  const jwk = {
+    kty: 'oct',
+    k: btoa(String.fromCharCode(...new Uint8Array(hash.slice(0,16)))).replace(/=+$/, '').replace(/\+/g,'-').replace(/\//g,'_'),
+    alg: 'A128GCM',
+    ext: true,
+  };
+  return crypto.subtle.importKey('jwk', jwk, { name: 'AES-GCM' }, false, ['encrypt','decrypt']);
 }
 
-window.addEventListener('resize', resizeCanvas);
-
-// ─── Drawing ───────────────────────────────────────────────────
-function getPos(e) {
-  const rect = canvas.getBoundingClientRect();
-  let x, y;
-  if (e.touches) {
-    x = e.touches[0].clientX - rect.left;
-    y = e.touches[0].clientY - rect.top;
-    e.preventDefault();
-  } else {
-    x = e.clientX - rect.left;
-    y = e.clientY - rect.top;
-  }
-  return { x: x * (canvas.width / rect.width), y: y * (canvas.height / rect.height) };
+async function encryptData(key, data) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encoded = new TextEncoder().encode(JSON.stringify(data));
+  const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoded);
+  const buf = new Uint8Array(encrypted);
+  return { buf, iv };
 }
 
-function startDraw(e) {
-  if (e.button !== undefined && e.button !== 0) return;
-  e.preventDefault();
-  drawing = true;
-  currentPoints = [];
-  const pos = getPos(e);
-  currentPoints.push(pos);
-}
-
-function moveDraw(e) {
-  e.preventDefault();
-  const pos = getPos(e);
-  if (drawing) {
-    currentPoints.push(pos);
-    // Draw live
-    ctx.beginPath();
-    ctx.strokeStyle = isEraser ? '#1a1a2e' : brushColor;
-    ctx.lineWidth = brushSize;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    const p = currentPoints[currentPoints.length - 2];
-    const c = currentPoints[currentPoints.length - 1];
-    if (p) {
-      ctx.moveTo(p.x, p.y);
-      ctx.lineTo(c.x, c.y);
-      ctx.stroke();
-    }
-  }
-}
-
-function endDraw(e) {
-  if (!drawing) return;
-  drawing = false;
-  if (currentPoints.length < 2) return;
-  const id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
-  const stroke = { id, points: currentPoints.map(p => ({ x: p.x, y: p.y })), color: brushColor, size: brushSize, isEraser };
-  strokes.push(stroke);
-  strokeIdSet.add(id);
-  undoStack.push(id);
-  if (undoStack.length > 50) undoStack.shift();
-  broadcastData({ type: 'stroke', data: { id, points: stroke.points, color: stroke.color, size: stroke.size, isEraser: stroke.isEraser } });
-}
-
-canvas.addEventListener('mousedown', startDraw);
-canvas.addEventListener('mousemove', moveDraw);
-canvas.addEventListener('mouseup', endDraw);
-canvas.addEventListener('mouseleave', endDraw);
-canvas.addEventListener('touchstart', startDraw, { passive: false });
-canvas.addEventListener('touchmove', moveDraw, { passive: false });
-canvas.addEventListener('touchend', endDraw, { passive: false });
-
-// ─── Redraw ────────────────────────────────────────────────────
-function redrawAllStrokes() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  for (const s of strokes) {
-    if (!s.points || s.points.length < 2) continue;
-    ctx.beginPath();
-    ctx.strokeStyle = s.isEraser ? '#1a1a2e' : (s.color || '#ff6b6b');
-    ctx.lineWidth = s.size || 3;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.moveTo(s.points[0].x, s.points[0].y);
-    for (let i = 1; i < s.points.length; i++) {
-      ctx.lineTo(s.points[i].x, s.points[i].y);
-    }
-    ctx.stroke();
-  }
-}
-
-// ─── Toolbar handlers ──────────────────────────────────────────
-colorPicker.addEventListener('input', function() { brushColor = this.value; isEraser = false; eraserBtn.classList.remove('active'); });
-sizeSlider.addEventListener('input', function() { brushSize = parseInt(this.value); sizeLabel.textContent = this.value; });
-eraserBtn.addEventListener('click', function() { isEraser = !isEraser; this.classList.toggle('active'); });
-undoBtn.addEventListener('click', function() {
-  if (undoStack.length === 0) return;
-  const id = undoStack.pop();
-  const idx = strokes.findIndex(s => s.id === id);
-  if (idx !== -1) {
-    strokes.splice(idx, 1);
-    strokeIdSet.delete(id);
-    redrawAllStrokes();
-    broadcastData({ type: 'undo', data: { id } });
-  }
-});
-clearBtn.addEventListener('click', function() {
-  strokes = [];
-  strokeIdSet.clear();
-  undoStack = [];
-  redrawAllStrokes();
-  broadcastData({ type: 'clear' });
-});
-
-// ─── Socket.IO Connection ──────────────────────────────────────
-const socket = io('wss://oss-collab.excalidraw.com');
-
-function setStatus(text, className) {
-  document.getElementById('statusText').textContent = text;
-  document.getElementById('statusDot').className = 'dot ' + className;
-}
-
-socket.on('connect', function() {
-  mySocketId = socket.id;
-  setStatus('Connected', 'connected');
-  socket.emit('join-room', roomId);
-});
-
-socket.on('init-room', function() {
-  setStatus('Connected', 'connected');
-});
-
-socket.on('first-in-room', function() {
-  isHost = true;
-  roleBadge.textContent = '👑 Host';
-  roleBadgeSmall.textContent = 'Host';
-  roleBadgeSmall.style.background = '#4caf50';
-});
-
-socket.on('new-user', function(socketId) {
-  // A new user joined — if we're the host, we'll respond to their sync-request
-  // They will send sync-request, we respond with sync-all
-});
-
-socket.on('room-user-change', function(userIds) {
-  userCountSpan.textContent = '(' + userIds.length + ')';
-  if (!isHost && userIds.length > 1) {
-    // more than one user, but we might not be host
-  }
-});
-
-socket.on('disconnect', function() {
-  setStatus('Disconnected', 'disconnected');
-  mySocketId = null;
-  isHost = false;
-});
-
-// ─── Crypto ────────────────────────────────────────────────────
-async function importKey(usage) {
-  return await crypto.subtle.importKey(
-    'jwk',
-    { k: roomKey, alg: 'A128GCM', ext: true, key_ops: ['encrypt', 'decrypt'], kty: 'oct' },
-    { name: 'AES-GCM', length: 128 },
-    false,
-    [usage]
-  );
-}
-
-async function broadcastData(data) {
+async function decryptData(key, buf, iv) {
   try {
-    const json = JSON.stringify(data);
-    const encoded = new TextEncoder().encode(json);
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const key = await importKey('encrypt');
-    const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, encoded);
-    socket.emit('server-volatile-broadcast', roomId, new Uint8Array(encrypted), iv);
-  } catch (e) {
-    console.error('Broadcast error:', e);
+    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, buf);
+    return JSON.parse(new TextDecoder().decode(decrypted));
+  } catch(e) {
+    console.warn('Decrypt failed:', e);
+    return null;
   }
 }
 
-// ─── Receive Data ──────────────────────────────────────────────
-socket.on('client-broadcast', async function(encryptedData, iv) {
-  try {
-    const key = await importKey('decrypt');
-    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, encryptedData);
-    const text = new TextDecoder().decode(new Uint8Array(decrypted));
-    const msg = JSON.parse(text);
-    handleMessage(msg);
-  } catch (e) {
-    console.warn('Decrypt error:', e);
-  }
-});
+// ====== SOCKET ======
+function connectToRoom(rId, rKey) {
+  roomId = rId;
+  roomKey = rKey;
 
-function handleMessage(msg) {
-  switch (msg.type) {
-    case 'stroke': {
-      const s = msg.data;
-      if (!strokeIdSet.has(s.id)) {
-        strokes.push({ id: s.id, points: s.points, color: s.color, size: s.size, isEraser: s.isEraser });
-        strokeIdSet.add(s.id);
-        undoStack.push(s.id);
-        if (undoStack.length > 50) undoStack.shift();
-        redrawAllStrokes();
+  // Generate stable user ID from room key
+  userId = roomKey.slice(0,6) + '_' + Math.random().toString(36).slice(2,6);
+
+  document.getElementById('roomDisplay').textContent = roomId.slice(0,12) + '...';
+  setStatus('connecting', 'Connecting...');
+
+  socket = io('wss://oss-collab.excalidraw.com', {
+    transports: ['websocket', 'polling'],
+    forceNew: true,
+  });
+
+  socket.on('connect', () => {
+    connected = true;
+    setStatus('connected', 'Connected');
+    socket.emit('join-room', roomId);
+  });
+
+  socket.on('disconnect', () => {
+    connected = false;
+    setStatus('disconnected', 'Disconnected');
+    users = [];
+    updateUserCount();
+  });
+
+  socket.on('connect_error', (err) => {
+    setStatus('disconnected', 'Error: ' + err.message);
+  });
+
+  socket.on('init-room', (data) => {
+    // Host/peer determination
+    isHost = (data === 'first-in-room');
+    document.getElementById('roleBadge').textContent = isHost ? 'Host' : 'Peer';
+    document.getElementById('roleBadge').classList.remove('hidden');
+
+    if (isHost) {
+      updateCodeEditor(currentCode);
+      updatePreview();
+      // Show share modal on first load
+      if (firstLoad) {
+        firstLoad = false;
+        setTimeout(shareRoom, 800);
+      }
+    } else {
+      sendData({ type: 'sync-request' });
+    }
+  });
+
+  socket.on('first-in-room', () => {
+    if (!isHost) {
+      isHost = true;
+      document.getElementById('roleBadge').textContent = 'Host';
+    }
+  });
+
+  socket.on('new-user', () => {
+    if (isHost) {
+      sendFullSync();
+    }
+  });
+
+  socket.on('room-user-change', (userList) => {
+    users = userList || [];
+    updateUserCount();
+  });
+
+  socket.on('client-broadcast', async (encryptedBuffer, iv) => {
+    try {
+      const key = await getKeyFromPass(roomKey);
+      const data = await decryptData(key, new Uint8Array(encryptedBuffer), new Uint8Array(iv));
+      if (!data) return;
+      handleIncomingData(data);
+    } catch(e) {
+      console.warn('Error handling broadcast:', e);
+    }
+  });
+}
+
+async function sendData(data) {
+  if (!socket || !connected) return;
+  try {
+    const key = await getKeyFromPass(roomKey);
+    const { buf, iv } = await encryptData(key, data);
+    socket.emit('server-volatile-broadcast', roomId, buf.buffer, iv.buffer);
+  } catch(e) {
+    console.warn('Send error:', e);
+  }
+}
+
+// ====== HANDLE INCOMING ======
+function handleIncomingData(data) {
+  switch(data.type) {
+    case 'code':
+      if (!isHost && data.data && data.data.html !== undefined) {
+        currentCode = data.data.html;
+        updateCodeEditor(currentCode);
+        clearTimeout(previewTimer);
+        previewTimer = setTimeout(updatePreview, 500);
       }
       break;
-    }
-    case 'clear': {
-      strokes = [];
-      strokeIdSet.clear();
-      undoStack = [];
-      redrawAllStrokes();
-      break;
-    }
-    case 'undo': {
-      const id = msg.data.id;
-      const idx = strokes.findIndex(s => s.id === id);
-      if (idx !== -1) {
-        strokes.splice(idx, 1);
-        strokeIdSet.delete(id);
-        const uIdx = undoStack.indexOf(id);
-        if (uIdx !== -1) undoStack.splice(uIdx, 1);
-        redrawAllStrokes();
+    case 'chat':
+      if (data.data) {
+        chatMessages.push(data.data);
+        renderChat();
       }
       break;
-    }
-    case 'chat': {
-      addChatMessage(msg.data.sender, msg.data.text, msg.data.timestamp);
-      break;
-    }
-    case 'typing': {
-      if (msg.data.sender !== mySocketId) {
-        typingSender = msg.data.sender;
-        showTyping();
+    case 'typing':
+      if (data.data && data.data.sender) {
+        showTypingIndicator(data.data.sender);
       }
       break;
-    }
-    case 'sync-request': {
+    case 'sync-request':
       if (isHost) {
-        broadcastData({
-          type: 'sync-all',
-          data: {
-            strokes: strokes.map(s => ({ id: s.id, points: s.points, color: s.color, size: s.size, isEraser: s.isEraser })),
-            chatMessages: chatHistory.map(m => ({ sender: m.sender, text: m.text, timestamp: m.timestamp }))
-          }
-        });
+        sendFullSync();
       }
       break;
-    }
-    case 'sync-all': {
-      if (!isHost) {
-        const d = msg.data;
-        if (d.strokes) {
-          for (const s of d.strokes) {
-            if (!strokeIdSet.has(s.id)) {
-              strokes.push({ id: s.id, points: s.points, color: s.color, size: s.size, isEraser: s.isEraser });
-              strokeIdSet.add(s.id);
-              undoStack.push(s.id);
-              if (undoStack.length > 50) undoStack.shift();
-            }
-          }
-          redrawAllStrokes();
+    case 'sync-all':
+      if (data.data) {
+        if (data.data.html) {
+          currentCode = data.data.html;
+          updateCodeEditor(currentCode);
+          updatePreview();
         }
-        if (d.chatMessages) {
-          chatHistory = d.chatMessages.map(m => ({ sender: m.sender, text: m.text, timestamp: m.timestamp }));
-          renderChatHistory();
+        if (data.data.chatMessages) {
+          chatMessages = data.data.chatMessages;
+          renderChat();
         }
       }
       break;
+    case 'users':
+      if (data.data && Array.isArray(data.data.users)) {
+        users = data.data.users;
+        updateUserCount();
+      }
+      break;
+  }
+}
+
+async function sendFullSync() {
+  sendData({
+    type: 'sync-all',
+    data: {
+      html: currentCode,
+      chatMessages: chatMessages,
     }
+  });
+}
+
+// ====== CODE EDITOR ======
+const editor = document.getElementById('codeEditor');
+const gutter = document.getElementById('gutter');
+
+function updateCodeEditor(code) {
+  editor.value = code;
+  updateLineNumbers();
+}
+
+function updateLineNumbers() {
+  const lines = editor.value.split('\n').length;
+  let html = '';
+  for (let i = 1; i <= lines; i++) {
+    html += '<div>' + i + '</div>';
+  }
+  gutter.innerHTML = html;
+}
+
+function onCodeChange() {
+  currentCode = editor.value;
+  updateLineNumbers();
+
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(updatePreview, 500);
+
+  clearTimeout(codeSendTimer);
+  codeSendTimer = setTimeout(() => {
+    sendData({
+      type: 'code',
+      data: { html: currentCode, sender: userId }
+    });
+  }, 300);
+}
+
+function handleTab(e) {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    editor.value = editor.value.substring(0, start) + '    ' + editor.value.substring(end);
+    editor.selectionStart = editor.selectionEnd = start + 4;
+    onCodeChange();
   }
 }
 
-// ─── Chat ──────────────────────────────────────────────────────
-function addChatMessage(sender, text, timestamp) {
-  timestamp = timestamp || Date.now();
-  chatHistory.push({ sender, text, timestamp });
-  renderChatHistory();
+function clearEditor() {
+  editor.value = '';
+  currentCode = '';
+  updateLineNumbers();
+  updatePreview();
+  sendData({ type: 'code', data: { html: '', sender: userId } });
 }
 
-function renderChatHistory() {
-  // Remove all children except typing indicator
-  while (chatMessages.firstChild) {
-    if (chatMessages.firstChild === typingIndicator) break;
-    chatMessages.removeChild(chatMessages.firstChild);
-  }
-  // Remove all before typing
-  while (chatMessages.firstChild !== typingIndicator) {
-    chatMessages.removeChild(chatMessages.firstChild);
-  }
-  // Insert messages before typing indicator
-  for (const m of chatHistory) {
-    const div = document.createElement('div');
-    div.className = 'msg';
-    const shortId = m.sender ? m.sender.slice(0, 4) : '????';
-    const time = new Date(m.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    div.innerHTML = '<span class="meta"><span class="sender">' + escapeHtml(shortId) + '</span> ' + time + '</span><br><span class="text">' + escapeHtml(m.text) + '</span>';
-    chatMessages.insertBefore(div, typingIndicator);
-  }
-  chatMessages.scrollTop = chatMessages.scrollHeight;
+function resetDefault() {
+  currentCode = DEFAULT_HTML;
+  updateCodeEditor(currentCode);
+  updatePreview();
+  sendData({ type: 'code', data: { html: currentCode, sender: userId } });
 }
 
-function escapeHtml(s) {
-  const d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
+// ====== PREVIEW ======
+function updatePreview(replaceDoc) {
+  const iframe = document.getElementById('preview');
+  const doc = iframe.contentDocument || iframe.contentWindow.document;
+  doc.open();
+  doc.write(currentCode);
+  doc.close();
 }
 
-function showTyping() {
-  if (typingSender) {
-    const shortId = typingSender.slice(0, 4);
-    typingIndicator.textContent = shortId + ' is typing...';
-    clearTimeout(typingTimer);
-    typingTimer = setTimeout(function() {
-      typingIndicator.textContent = '';
-      typingSender = null;
-    }, 2000);
+function refreshPreview() {
+  updatePreview();
+}
+
+// ====== CHAT ======
+function renderChat() {
+  const container = document.getElementById('chatMessages');
+  let html = '';
+  for (const msg of chatMessages) {
+    const time = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '';
+    const sender = msg.sender ? msg.sender.slice(0,4) : '???';
+    html += '<div class="msg"><span class="sender">' + escHtml(sender) + '</span><span class="time">' + time + '</span><br><span class="text">' + escHtml(msg.text) + '</span></div>';
   }
+  if (typingIndicator) {
+    html += '<div class="typing-indicator">' + escHtml(typingIndicator) + ' is typing...</div>';
+  }
+  container.innerHTML = html;
+  container.scrollTop = container.scrollHeight;
 }
 
-sendBtn.addEventListener('click', function() {
-  const text = chatInput.value.trim();
-  if (!text) return;
-  chatInput.value = '';
-  addChatMessage(mySocketId, text, Date.now());
-  broadcastData({ type: 'chat', data: { sender: mySocketId, text, timestamp: Date.now() } });
-});
+let typingIndicator = null;
 
-chatInput.addEventListener('keydown', function(e) {
+function onChatKey(e) {
   if (e.key === 'Enter') {
-    sendBtn.click();
+    e.preventDefault();
+    sendChat();
   }
-});
+}
 
-// Typing indicator broadcast (debounced)
-let typingBroadcastTimer = null;
-chatInput.addEventListener('input', function() {
-  if (!typingBroadcastTimer) {
-    typingBroadcastTimer = setTimeout(function() {
-      broadcastData({ type: 'typing', data: { sender: mySocketId } });
-      typingBroadcastTimer = null;
-    }, 300);
+function sendChat() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  const msg = { sender: userId, text, timestamp: Date.now() };
+  chatMessages.push(msg);
+  renderChat();
+  sendData({ type: 'chat', data: msg });
+  if (emojiPickerVisible) toggleEmojiPicker();
+}
+
+function sendEmoji(emoji) {
+  const input = document.getElementById('chatInput');
+  input.value = emoji;
+  sendChat();
+}
+
+function toggleEmojiPicker() {
+  const ep = document.getElementById('emojiPicker');
+  emojiPickerVisible = !emojiPickerVisible;
+  ep.classList.toggle('hidden', !emojiPickerVisible);
+}
+
+function toggleChat() {
+  document.getElementById('chatPanel').classList.toggle('collapsed');
+}
+
+function showTypingIndicator(sender) {
+  typingIndicator = sender.slice(0,4);
+  renderChat();
+  clearTimeout(typingTimeout);
+  typingTimeout = setTimeout(() => {
+    typingIndicator = null;
+    renderChat();
+  }, 2000);
+}
+
+// ====== UI HELPERS ======
+function escHtml(s) {
+  const div = document.createElement('div');
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+function setStatus(cls, text) {
+  const badge = document.getElementById('statusBadge');
+  badge.className = 'status ' + cls;
+  badge.textContent = text;
+}
+
+function updateUserCount() {
+  const el = document.getElementById('userCount');
+  const count = users.length > 0 ? users.length + (isHost ? '' : '+') : '';
+  el.textContent = count ? '👤 ' + count : '';
+  document.getElementById('chatUserCount').textContent = count ? '(' + count + ')' : '';
+}
+
+// ====== ROOM CREATION ======
+function createRoom() {
+  const randomId = crypto.randomUUID ? crypto.randomUUID().slice(0,13) : Math.random().toString(36).slice(2,15);
+  const randomKey = crypto.randomUUID ? crypto.randomUUID().slice(0,10) : Math.random().toString(36).slice(2,12);
+  const hash = '#room=' + randomId + ',' + randomKey;
+  window.location.hash = hash;
+  connectToRoom(randomId, randomKey);
+}
+
+function parseHashAndConnect(hash) {
+  const match = hash.match(/#room=([^,]+),(\S+)/);
+  if (match) {
+    connectToRoom(match[1], match[2]);
+    return true;
   }
-});
+  return false;
+}
 
-// Emoji picker
-document.querySelectorAll('#emoji-row span').forEach(function(el) {
-  el.addEventListener('click', function() {
-    chatInput.value += this.dataset.emoji;
-    chatInput.focus();
-  });
-});
+// ====== SHARE ======
+function shareRoom() {
+  const modal = document.getElementById('shareModal');
+  modal.classList.remove('hidden');
+  const shareUrl = window.location.href;
+  document.getElementById('shareLink').textContent = shareUrl;
 
-// ─── Share modal ───────────────────────────────────────────────
-const shareOverlay = document.getElementById('shareOverlay');
-const shareModal = document.getElementById('shareModal');
-const roomUrlDisplay = document.getElementById('roomUrlDisplay');
-const qrContainer = document.getElementById('qrContainer');
-const modalCopyBtn = document.getElementById('modalCopyBtn');
-const modalCloseBtn = document.getElementById('modalCloseBtn');
-const modalCloseX = document.getElementById('modalCloseX');
-
-let qrCodeInstance = null;
-
-function openShareModal() {
-  const url = window.location.href;
-  roomUrlDisplay.textContent = url;
-  roomUrlDisplay.title = url;
-
-  // Clear previous QR
+  const qrContainer = document.getElementById('qrcode');
   qrContainer.innerHTML = '';
-
-  // Generate QR code
-  qrCodeInstance = new QRCode(qrContainer, {
-    text: url,
-    width: 160,
-    height: 160,
-    colorDark: '#ff6b6b',
-    colorLight: '#16213e',
-    correctLevel: QRCode.CorrectLevel.H
+  new QRCode(qrContainer, {
+    text: shareUrl,
+    width: 180,
+    height: 180,
+    colorDark: '#1a1a2e',
+    colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.H,
   });
-
-  shareOverlay.classList.add('open');
 }
 
 function closeShareModal() {
-  shareOverlay.classList.remove('open');
+  document.getElementById('shareModal').classList.add('hidden');
 }
 
-shareBtn.addEventListener('click', openShareModal);
+function copyShareLink() {
+  const link = document.getElementById('shareLink').textContent;
+  navigator.clipboard.writeText(link).then(() => {
+    alert('Link copied!');
+  }).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = link;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    alert('Link copied!');
+  });
+}
 
-modalCloseX.addEventListener('click', closeShareModal);
-modalCloseBtn.addEventListener('click', closeShareModal);
-shareOverlay.addEventListener('click', function(e) {
-  if (e.target === shareOverlay) closeShareModal();
-});
+// ====== INIT ======
+function init() {
+  const hash = window.location.hash;
+  
+  if (hash && hash.includes('#room=')) {
+    parseHashAndConnect(hash);
+  } else {
+    // AUTO-CREATE ROOM — no clicking needed
+    createRoom();
+  }
 
-document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape' && shareOverlay.classList.contains('open')) {
-    closeShareModal();
+  updateCodeEditor(currentCode);
+  updatePreview();
+}
+
+window.addEventListener('hashchange', () => {
+  const hash = window.location.hash;
+  if (hash && hash.includes('#room=')) {
+    parseHashAndConnect(hash);
   }
 });
 
-modalCopyBtn.addEventListener('click', function() {
-  navigator.clipboard.writeText(window.location.href).then(function() {
-    const orig = modalCopyBtn.textContent;
-    modalCopyBtn.textContent = '✅ Copied!';
-    setTimeout(function() { modalCopyBtn.textContent = orig; }, 2000);
-  });
+document.addEventListener('click', (e) => {
+  if (emojiPickerVisible && !e.target.closest('#emojiPicker') && !e.target.closest('.emoji-btn')) {
+    toggleEmojiPicker();
+  }
 });
 
-// ─── Request sync after joining ────────────────────────────────
-socket.on('first-in-room', function() {
-  // Already handled for isHost
-});
-
-// On connect + join-room, after a brief delay request sync if not host
-socket.on('init-room', function() {
-  setTimeout(function() {
-    if (!isHost) {
-      broadcastData({ type: 'sync-request' });
-    }
-  }, 500);
-});
-
-// Also on 'new-user' — if we're the host we don't need to request sync,
-// but a new user should request sync if they just joined
-// Actually the init-room handler already handles the request.
-// If we receive new-user while we're NOT host, we're not the first,
-// but we might need to request sync if we missed it.
-// The init-room handler fires once, so this is fine.
-
-// ─── Resize on load ────────────────────────────────────────────
-setTimeout(resizeCanvas, 100);
-
-})();
+init();
 </script>
 </body>
 </html>
