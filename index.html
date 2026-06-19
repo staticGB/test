@@ -45,7 +45,7 @@ iframe{flex:1;width:100%;border:none;background:#fff}
 <div class="split">
   <div class="editor-pane">
     <div class="hdr">✏️ Code</div>
-    <textarea id="editor" spellcheck="false"></textarea>
+    <textarea id="editor" spellcheck="false" placeholder="Write HTML/CSS/JS..."></textarea>
   </div>
   <div class="preview-pane">
     <div class="hdr">
@@ -64,63 +64,23 @@ iframe{flex:1;width:100%;border:none;background:#fff}
 
 <script>
 // === CONFIG ===
-const RELAY = "wss://african-italic-chuck-solaris.trycloudflare.com";
-const DEFAULT_CODE = `<!DOCTYPE html>
-<html>
-<head><style>
-  body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#1a1a2e;color:#eee;flex-direction:column}
-  canvas{border:1px solid #333;border-radius:8px;background:#fff}
-</style></head>
-<body>
-  <canvas id="c" width="400" height="400"></canvas>
-  <script>
-    const c = document.getElementById('c'), ctx = c.getContext('2d');
-    let x = 200, y = 200, vx = 3, vy = 2;
-    
-    function draw() {
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(0, 0, 400, 400);
-      
-      x += vx; y += vy;
-      if (x > 380 || x < 20) vx = -vx;
-      if (y > 380 || y < 20) vy = -vy;
-      
-      ctx.fillStyle = '#e94560';
-      ctx.beginPath();
-      ctx.arc(x, y, 20, 0, Math.PI*2);
-      ctx.fill();
-      
-      // Sync ball position to peers!
-      if (window.__peer) __peer.send({type:'ball', x, y});
-      
-      requestAnimationFrame(draw);
-    }
-    draw();
-    
-    // Receive from peers
-    if (window.__peer) {
-      __peer.onReceive((data) => {
-        if (data.type === 'chat') {
-          console.log('Peer says:', data.text);
-        }
-      });
-    }
-  <\\/script>
-</body>
-</html>`;
+var RELAY = "wss://african-italic-chuck-solaris.trycloudflare.com";
+var SC = "</" + "script>";
+
+var DEFAULT_CODE = '<!DOCTYPE html>\n<html>\n<head><style>\n  body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#1a1a2e;color:#eee;flex-direction:column}\n  canvas{border:1px solid #333;border-radius:8px;background:#fff}\n</style></head>\n<body>\n  <canvas id="c" width="400" height="400"></canvas>\n  <' + 'script>\n    var c = document.getElementById("c"), ctx = c.getContext("2d");\n    var x = 200, y = 200, vx = 3, vy = 2;\n    function draw() {\n      ctx.fillStyle = "#fff";\n      ctx.fillRect(0, 0, 400, 400);\n      x += vx; y += vy;\n      if (x > 380 || x < 20) vx = -vx;\n      if (y > 380 || y < 20) vy = -vy;\n      ctx.fillStyle = "#e94560";\n      ctx.beginPath();\n      ctx.arc(x, y, 20, 0, Math.PI*2);\n      ctx.fill();\n      if (window.__peer) __peer.send({ball: true, x: x, y: y});\n      requestAnimationFrame(draw);\n    }\n    draw();\n  ' + SC + '\n</body>\n</html>';
 
 // === STATE ===
-const editor = document.getElementById('editor');
-const preview = document.getElementById('preview');
-const statusEl = document.getElementById('status');
-const peerCount = document.getElementById('peerCount');
+var editor = document.getElementById('editor');
+var preview = document.getElementById('preview');
+var statusEl = document.getElementById('status');
+var peerCount = document.getElementById('peerCount');
 
-let ws = null;
-let roomId = 'mayo';
-let userId = Math.random().toString(36).slice(2,6);
-let currentCode = DEFAULT_CODE;
-let broadcastTimer = null;
-let reconnectTimer = null;
+var ws = null;
+var roomId = 'mayo';
+var userId = Math.random().toString(36).slice(2,6);
+var currentCode = DEFAULT_CODE;
+var broadcastTimer = null;
+var reconnectTimer = null;
 
 // === WEBSOCKET ===
 function connect() {
@@ -129,15 +89,15 @@ function connect() {
   setStatus('connecting…', 'offline');
   
   ws = new WebSocket(RELAY);
-  ws.onopen = () => {
+  ws.onopen = function() {
     ws.send(JSON.stringify({type:'join', room:roomId}));
     setStatus('live', 'live');
     reconnectTimer = null;
   };
   
-  ws.onmessage = (e) => {
-    let msg;
-    try { msg = JSON.parse(e.data); } catch { return; }
+  ws.onmessage = function(e) {
+    var msg;
+    try { msg = JSON.parse(e.data); } catch(e) { return; }
     
     switch(msg.type) {
       case 'init':
@@ -155,8 +115,7 @@ function connect() {
         peerCount.textContent = msg.count > 0 ? '('+msg.count+' here)' : '';
         break;
       case 'peer':
-        // Forward to the iframe
-        const iframe = document.getElementById('preview');
+        var iframe = document.getElementById('preview');
         if (iframe && iframe.contentWindow) {
           iframe.contentWindow.postMessage({type:'__peer_in', data: msg.data, sender: msg.sender}, '*');
         }
@@ -167,11 +126,11 @@ function connect() {
     }
   };
   
-  ws.onclose = () => {
+  ws.onclose = function() {
     setStatus('reconnecting…', 'offline');
     if (!reconnectTimer) reconnectTimer = setTimeout(connect, 2000);
   };
-  ws.onerror = () => {};
+  ws.onerror = function() {};
 }
 
 function setStatus(text, cls) {
@@ -181,53 +140,46 @@ function setStatus(text, cls) {
 
 function send(type, data) {
   if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({type, room:roomId, data, sender:userId}));
+    ws.send(JSON.stringify({type: type, room: roomId, data: data, sender: userId}));
   }
 }
 
 // === EDITOR ===
 function runCode() {
   currentCode = editor.value;
-  const code = injectPeerAPI(currentCode);
+  var code = injectPeerAPI(currentCode);
   preview.srcdoc = code;
 }
 
 function injectPeerAPI(html) {
-  const api = `
-<script>
-(function() {
-  // Peer API for syncing events across rooms
-  window.__peer = {
-    _callbacks: [],
-    send: function(data) {
-      window.parent.postMessage({type: '__peer_out', data: data}, '*');
-    },
-    onReceive: function(cb) {
-      this._callbacks.push(cb);
-    }
-  };
+  var api = '<' + 'script>\n(function() {\n' +
+    '  window.__peer = {\n' +
+    '    _callbacks: [],\n' +
+    '    send: function(data) {\n' +
+    '      window.parent.postMessage({type: "__peer_out", data: data}, "*");\n' +
+    '    },\n' +
+    '    onReceive: function(cb) {\n' +
+    '      this._callbacks.push(cb);\n' +
+    '    }\n' +
+    '  };\n' +
+    '  window.addEventListener("message", function(e) {\n' +
+    '    if (e.data && e.data.type === "__peer_in") {\n' +
+    '      window.__peer._callbacks.forEach(function(cb) { cb(e.data.data); });\n' +
+    '    }\n' +
+    '  });\n' +
+    '  window.peer = window.__peer;\n' +
+    '})();\n' + SC + '\n';
   
-  window.addEventListener('message', function(e) {
-    if (e.data && e.data.type === '__peer_in') {
-      window.__peer._callbacks.forEach(function(cb) { cb(e.data.data); });
-    }
-  });
-  
-  // Also expose as 'peer' for convenience
-  window.peer = window.__peer;
-})();
-<\\/script>
-`;
-  // Inject before </head> or after <head>
-  if (html.includes('</head>')) {
+  if (html.indexOf('</head>') !== -1) {
     return html.replace('</head>', api + '</head>');
   }
   return api + html;
 }
 
-editor.addEventListener('input', () => {
+editor.addEventListener('input', function() {
   clearTimeout(broadcastTimer);
-  broadcastTimer = setTimeout(() => {
+  broadcastTimer = setTimeout(function() {
+    runCode();
     send('update', {code: editor.value});
   }, 400);
 });
@@ -240,7 +192,7 @@ function resetCode() {
 }
 
 // === LISTEN FOR PEER MESSAGES FROM IFRAME ===
-window.addEventListener('message', (e) => {
+window.addEventListener('message', function(e) {
   if (e.data && e.data.type === '__peer_out') {
     send('peer', e.data.data);
   }
@@ -248,25 +200,25 @@ window.addEventListener('message', (e) => {
 
 // === CHAT ===
 function addChat(sender, text) {
-  const el = document.getElementById('chat-msgs');
-  el.innerHTML = '<b style="color:#e94560">'+esc(sender)+'</b> '+esc(text) + ' · ' + el.innerHTML;
-  if (el.innerHTML.length > 300) el.innerHTML = el.innerHTML.slice(0,300)+'…';
+  var el = document.getElementById('chat-msgs');
+  el.innerHTML = '<b style="color:#e94560">' + esc(sender) + '</b> ' + esc(text) + ' · ' + el.innerHTML;
+  if (el.innerHTML.length > 300) el.innerHTML = el.innerHTML.slice(0,300) + '…';
 }
 
 function sendChat() {
-  const inp = document.getElementById('chatInput');
-  const text = inp.value.trim();
+  var inp = document.getElementById('chatInput');
+  var text = inp.value.trim();
   if (!text) return;
-  send('chat', {sender:userId, text});
+  send('chat', {sender:userId, text: text});
   addChat('you', text);
   inp.value = '';
 }
 
-function esc(s) { return s.replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c]}); }
+function esc(s) { return s.replace(/[<>&]/g,function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}); }
 
 // === ROOM ===
 function joinRoom() {
-  const r = document.getElementById('roomInput').value.trim();
+  var r = document.getElementById('roomInput').value.trim();
   if (!r) return;
   roomId = r;
   userId = Math.random().toString(36).slice(2,6);
