@@ -64,7 +64,7 @@ iframe{flex:1;width:100%;border:none;background:#fff}
 
 <script>
 // === CONFIG ===
-var RELAY = "wss://richards-bargain-hearings-beats.trycloudflare.com";
+var RELAY = "wss://linking-picking-chemicals-winning.trycloudflare.com";
 var SC = "</" + "script>";
 
 var DEFAULT_CODE = '<!DOCTYPE html>\n<html>\n<head><style>\n  body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#1a1a2e;color:#eee;flex-direction:column}\n  canvas{border:1px solid #333;border-radius:8px;background:#fff}\n</style></head>\n<body>\n  <canvas id="c" width="400" height="400"></canvas>\n  <' + 'script>\n    var c = document.getElementById("c"), ctx = c.getContext("2d");\n    var x = 200, y = 200, vx = 3, vy = 2;\n    function draw() {\n      ctx.fillStyle = "#fff";\n      ctx.fillRect(0, 0, 400, 400);\n      x += vx; y += vy;\n      if (x > 380 || x < 20) vx = -vx;\n      if (y > 380 || y < 20) vy = -vy;\n      ctx.fillStyle = "#e94560";\n      ctx.beginPath();\n      ctx.arc(x, y, 20, 0, Math.PI*2);\n      ctx.fill();\n      if (window.__peer) __peer.send({ball: true, x: x, y: y});\n      requestAnimationFrame(draw);\n    }\n    draw();\n  ' + SC + '\n</body>\n</html>';
