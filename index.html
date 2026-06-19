@@ -82,6 +82,7 @@ var currentCode = DEFAULT_CODE;
 var broadcastTimer = null;
 var reconnectTimer = null;
 var _synced = false; // prevent input handler from broadcasting before init arrives
+var _skipNextInput = false; // skip one input event to discard browser session restore
 
 // === WEBSOCKET ===
 function connect() {
@@ -105,6 +106,7 @@ function connect() {
         _synced = true;
         peerCount.textContent = '🟢 live';
         if (msg.code != null) { editor.value = msg.code; currentCode = msg.code; runCode(); }
+        else { _skipNextInput = true; setTimeout(function(){ _skipNextInput = false; }, 500); } // skip browser session restore, unlock after 500ms
         break;
       case 'update':
         if (msg.sender !== userId) {
@@ -180,6 +182,7 @@ function injectPeerAPI(html) {
 
 editor.addEventListener('input', function() {
   if (!_synced) return; // ignore browser session restore
+  if (_skipNextInput) { _skipNextInput = false; return; } // skip stale session restore
   clearTimeout(broadcastTimer);
   broadcastTimer = setTimeout(function() {
     runCode();
