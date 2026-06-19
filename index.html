@@ -3,102 +3,124 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Collab Draw</title>
+<title>Live Code Collab</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#1a1a2e;color:#eee;font-family:-apple-system,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
-#topbar{display:flex;align-items:center;gap:8px;padding:8px 14px;background:#16213e;border-bottom:1px solid #333;flex-wrap:wrap;flex-shrink:0}
-#topbar .logo{font-weight:700;font-size:16px;color:#e94560;margin-right:8px}
-#topbar .status{font-size:12px;padding:3px 10px;border-radius:4px}
+body{background:#1e1e1e;color:#eee;font-family:-apple-system,sans-serif;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+#topbar{display:flex;align-items:center;gap:8px;padding:6px 12px;background:#252526;border-bottom:1px solid #333;flex-shrink:0}
+#topbar .logo{font-weight:700;font-size:14px;color:#e94560}
+#topbar .status{font-size:11px;padding:2px 8px;border-radius:3px}
 #topbar .status.live{background:#1a3a1a;color:#4ade80}
 #topbar .status.offline{background:#3a1a1a;color:#f87171}
-#topbar .room-input{background:#0f3460;border:1px solid #333;color:#eee;padding:4px 8px;border-radius:4px;font-size:12px;width:140px;outline:none}
-#topbar .room-input:focus{border-color:#e94560}
-#topbar button{background:#e94560;border:none;color:#fff;padding:5px 14px;border-radius:4px;cursor:pointer;font-size:12px}
-#topbar button:hover{background:#d63850}
-#topbar .peer-count{font-size:11px;color:#888}
+#topbar input.room{background:#1e1e1e;border:1px solid #444;color:#eee;padding:3px 6px;border-radius:3px;font-size:11px;width:100px}
+#topbar button{background:#e94560;border:none;color:#fff;padding:3px 10px;border-radius:3px;cursor:pointer;font-size:11px}
 #topbar .spacer{flex:1}
-#topbar label{font-size:11px;color:#aaa}
-#topbar input[type=range]{width:60px}
-#topbar input[type=color]{width:24px;height:24px;border:none;cursor:pointer;padding:0;border-radius:2px}
-#topbar .sep{width:1px;height:22px;background:#333}
-#canvas-wrap{flex:1;display:flex;align-items:center;justify-content:center;background:#0a0a1a;position:relative;overflow:hidden}
-canvas{background:#fff;box-shadow:0 0 30px rgba(0,0,0,.5);cursor:crosshair;touch-action:none}
-#users{position:absolute;top:10px;right:10px;font-size:11px;color:#888;background:rgba(0,0,0,.6);padding:6px 10px;border-radius:6px}
-#users .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
-#chat{position:absolute;bottom:10px;right:10px;width:200px;background:rgba(0,0,0,.8);border-radius:8px;overflow:hidden;font-size:12px}
-#chat-header{padding:6px 10px;background:rgba(0,0,0,.4);color:#aaa;cursor:pointer;display:flex;justify-content:space-between}
-#chat-body{display:none;flex-direction:column;max-height:150px}
-#chat-body.open{display:flex}
-#chat-msgs{flex:1;overflow-y:auto;padding:6px 10px;max-height:100px;min-height:30px}
-#chat-msgs .msg{color:#ccc;margin-bottom:2px;word-break:break-word}
-#chat-msgs .msg .u{color:#e94560;font-weight:600}
-#chat-input{display:flex;border-top:1px solid #333}
-#chat-input input{flex:1;background:transparent;border:none;color:#eee;padding:6px 10px;font-size:12px;outline:none}
-#chat-input button{background:#e94560;border:none;color:#fff;padding:4px 10px;cursor:pointer;font-size:11px}
+#topbar .peer{font-size:11px;color:#888}
+.split{flex:1;display:flex;min-height:0}
+.editor-pane{width:45%;display:flex;flex-direction:column;border-right:1px solid #333}
+.editor-pane .hdr{background:#2d2d2d;padding:4px 10px;font-size:11px;color:#888;border-bottom:1px solid #333;flex-shrink:0}
+textarea{flex:1;background:#1e1e1e;border:none;outline:none;resize:none;color:#d4d4d4;font:13px/1.5 'Cascadia Code','Fira Code',monospace;padding:8px;tab-size:2;white-space:pre;overflow:auto}
+.preview-pane{flex:1;display:flex;flex-direction:column}
+.preview-pane .hdr{background:#2d2d2d;padding:4px 10px;font-size:11px;color:#888;border-bottom:1px solid #333;flex-shrink:0;display:flex;gap:8px}
+.preview-pane .hdr button{background:#0e639c;border:none;color:#fff;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:10px;margin-left:auto}
+iframe{flex:1;width:100%;border:none;background:#fff}
+#chat{height:28px;background:#252526;border-top:1px solid #333;display:flex;align-items:center;padding:0 10px;flex-shrink:0;gap:6px}
+#chat input{flex:1;background:#1e1e1e;border:1px solid #444;color:#eee;padding:3px 8px;border-radius:3px;font-size:11px;outline:none}
+#chat button{background:#e94560;border:none;color:#fff;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:10px}
+#chat-msgs{font-size:11px;color:#aaa;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;flex:1}
 </style>
 </head>
 <body>
 
 <div id="topbar">
-  <span class="logo">🎨 Collab Draw</span>
-  <div class="status offline" id="statusBadge">offline</div>
-  <input class="room-input" id="roomInput" placeholder="Room..." spellcheck="false" value="mayo">
+  <span class="logo">&lt;/&gt; Live Collab</span>
+  <div class="status offline" id="status">offline</div>
+  <input class="room" id="roomInput" value="mayo" spellcheck="false">
   <button onclick="joinRoom()">Join</button>
-  <span class="peer-count" id="peerCount"></span>
+  <span class="peer" id="peerCount"></span>
   <span class="spacer"></span>
-  
-  <button id="toolBrush" class="active" onclick="setTool('brush')" title="Brush">🖌</button>
-  <button id="toolEraser" onclick="setTool('eraser')" title="Eraser">◻</button>
-  <button id="toolClear" onclick="clearCanvas()" title="Clear">🗑</button>
-  <span class="sep"></span>
-  <label>Size</label>
-  <input type="range" id="brushSize" min="1" max="100" value="4">
-  <label id="sizeLabel">4px</label>
-  <label>Color</label>
-  <input type="color" id="brushColor" value="#e94560">
+  <button onclick="resetCode()">↺ Reset</button>
 </div>
 
-<div id="canvas-wrap">
-  <canvas id="mainCanvas" width="900" height="600"></canvas>
-  <div id="users">
-    <span class="dot" style="background:#e94560"></span> You
-    <span id="otherUsers"></span>
+<div class="split">
+  <div class="editor-pane">
+    <div class="hdr">✏️ Code</div>
+    <textarea id="editor" spellcheck="false"></textarea>
   </div>
-  <div id="chat">
-    <div id="chat-header" onclick="toggleChat()">
-      <span>💬 Chat</span>
-      <span id="chatToggle">▴</span>
+  <div class="preview-pane">
+    <div class="hdr">
+      🔍 Output
+      <button onclick="runCode()">▶ Run</button>
     </div>
-    <div id="chat-body" class="open">
-      <div id="chat-msgs"></div>
-      <div id="chat-input">
-        <input id="chatInput" placeholder="Message..." onkeydown="if(event.key==='Enter')sendChat()">
-        <button onclick="sendChat()">Send</button>
-      </div>
-    </div>
+    <iframe id="preview" sandbox="allow-scripts allow-modals allow-same-origin"></iframe>
   </div>
+</div>
+
+<div id="chat">
+  <div id="chat-msgs"></div>
+  <input id="chatInput" placeholder="Message..." onkeydown="if(event.key==='Enter')sendChat()">
+  <button onclick="sendChat()">Send</button>
 </div>
 
 <script>
 // === CONFIG ===
 const RELAY = "wss://des-spencer-modes-rated.trycloudflare.com";
+const DEFAULT_CODE = `<!DOCTYPE html>
+<html>
+<head><style>
+  body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#1a1a2e;color:#eee;flex-direction:column}
+  canvas{border:1px solid #333;border-radius:8px;background:#fff}
+</style></head>
+<body>
+  <canvas id="c" width="400" height="400"></canvas>
+  <script>
+    const c = document.getElementById('c'), ctx = c.getContext('2d');
+    let x = 200, y = 200, vx = 3, vy = 2;
+    
+    function draw() {
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, 400, 400);
+      
+      x += vx; y += vy;
+      if (x > 380 || x < 20) vx = -vx;
+      if (y > 380 || y < 20) vy = -vy;
+      
+      ctx.fillStyle = '#e94560';
+      ctx.beginPath();
+      ctx.arc(x, y, 20, 0, Math.PI*2);
+      ctx.fill();
+      
+      // Sync ball position to peers!
+      if (window.__peer) __peer.send({type:'ball', x, y});
+      
+      requestAnimationFrame(draw);
+    }
+    draw();
+    
+    // Receive from peers
+    if (window.__peer) {
+      __peer.onReceive((data) => {
+        if (data.type === 'chat') {
+          console.log('Peer says:', data.text);
+        }
+      });
+    }
+  <\\/script>
+</body>
+</html>`;
 
-const canvas = document.getElementById('mainCanvas');
-const ctx = canvas.getContext('2d');
+// === STATE ===
+const editor = document.getElementById('editor');
+const preview = document.getElementById('preview');
+const statusEl = document.getElementById('status');
+const peerCount = document.getElementById('peerCount');
+
 let ws = null;
 let roomId = 'mayo';
 let userId = Math.random().toString(36).slice(2,6);
-let isDrawing = false;
-let lastX = 0, lastY = 0;
-let brushSize = 4;
-let brushColor = '#e94560';
+let currentCode = DEFAULT_CODE;
+let broadcastTimer = null;
 let reconnectTimer = null;
-let remoteLast = {};
-
-// White bg
-ctx.fillStyle = '#fff';
-ctx.fillRect(0,0,canvas.width,canvas.height);
 
 // === WEBSOCKET ===
 function connect() {
@@ -119,43 +141,25 @@ function connect() {
     
     switch(msg.type) {
       case 'init':
-        document.getElementById('peerCount').textContent = '🟢 live';
+        peerCount.textContent = '🟢 live';
+        if (msg.code != null) { editor.value = msg.code; currentCode = msg.code; runCode(); }
         break;
-      case 'peers':
-        document.getElementById('peerCount').textContent = msg.count > 0 ? '('+msg.count+' here)' : '';
-        const o = document.getElementById('otherUsers');
-        o.textContent = msg.count > 1 ? '· ' + (msg.count-1) + ' other' + (msg.count>2?'s':'') : '';
-        break;
-      case 'draw':
-        if (msg.sender === userId) break;
-        // Apply the draw event using remoteLast for line continuity
-        const d = msg.data;
-        if (!d) break;
-        if (d.type === 'dot') {
-          ctx.fillStyle = d.color;
-          ctx.beginPath();
-          ctx.arc(d.x, d.y, d.size/2, 0, Math.PI*2);
-          ctx.fill();
-          remoteLast[msg.sender] = {x:d.x, y:d.y};
-        } else if (d.type === 'line') {
-          const last = remoteLast[msg.sender];
-          if (last) {
-            ctx.lineWidth = d.size;
-            ctx.strokeStyle = d.color;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-            ctx.beginPath();
-            ctx.moveTo(last.x, last.y);
-            ctx.lineTo(d.x, d.y);
-            ctx.stroke();
-          }
-          remoteLast[msg.sender] = {x:d.x, y:d.y};
-        } else if (d.type === 'end') {
-          delete remoteLast[msg.sender];
+      case 'update':
+        if (msg.sender !== userId) {
+          editor.value = msg.code;
+          currentCode = msg.code;
+          runCode();
         }
         break;
-      case 'clear':
-        if (msg.sender !== userId) clearLocal();
+      case 'peers':
+        peerCount.textContent = msg.count > 0 ? '('+msg.count+' here)' : '';
+        break;
+      case 'peer':
+        // Forward to the iframe
+        const iframe = document.getElementById('preview');
+        if (iframe && iframe.contentWindow) {
+          iframe.contentWindow.postMessage({type:'__peer_in', data: msg.data, sender: msg.sender}, '*');
+        }
         break;
       case 'chat':
         if (msg.data && msg.data.sender !== userId) addChat(msg.data.sender, msg.data.text);
@@ -170,114 +174,83 @@ function connect() {
   ws.onerror = () => {};
 }
 
+function setStatus(text, cls) {
+  statusEl.textContent = text;
+  statusEl.className = 'status ' + cls;
+}
+
 function send(type, data) {
   if (ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({type, room:roomId, data, sender:userId}));
   }
 }
 
-function setStatus(text, cls) {
-  document.getElementById('statusBadge').textContent = text;
-  document.getElementById('statusBadge').className = 'status ' + cls;
+// === EDITOR ===
+function runCode() {
+  currentCode = editor.value;
+  const code = injectPeerAPI(currentCode);
+  preview.srcdoc = code;
 }
 
-// === DRAWING ===
-canvas.addEventListener('mousedown', (e) => {
-  isDrawing = true;
-  const r = canvas.getBoundingClientRect();
-  lastX = (e.clientX - r.left) * (canvas.width / r.width);
-  lastY = (e.clientY - r.top) * (canvas.height / r.height);
+function injectPeerAPI(html) {
+  const api = `
+<script>
+(function() {
+  // Peer API for syncing events across rooms
+  window.__peer = {
+    _callbacks: [],
+    send: function(data) {
+      window.parent.postMessage({type: '__peer_out', data: data}, '*');
+    },
+    onReceive: function(cb) {
+      this._callbacks.push(cb);
+    }
+  };
   
-  ctx.fillStyle = brushColor;
-  ctx.beginPath();
-  ctx.arc(lastX, lastY, brushSize/2, 0, Math.PI*2);
-  ctx.fill();
+  window.addEventListener('message', function(e) {
+    if (e.data && e.data.type === '__peer_in') {
+      window.__peer._callbacks.forEach(function(cb) { cb(e.data.data); });
+    }
+  });
   
-  send('draw', {type:'dot', x:lastX, y:lastY, size:brushSize, color:brushColor});
-});
-
-canvas.addEventListener('mousemove', (e) => {
-  if (!isDrawing) return;
-  const r = canvas.getBoundingClientRect();
-  const x = (e.clientX - r.left) * (canvas.width / r.width);
-  const y = (e.clientY - r.top) * (canvas.height / r.height);
-  
-  ctx.lineWidth = brushSize;
-  ctx.strokeStyle = brushColor;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.beginPath();
-  ctx.moveTo(lastX, lastY);
-  ctx.lineTo(x, y);
-  ctx.stroke();
-  
-  send('draw', {type:'line', x, y, size:brushSize, color:brushColor});
-  lastX = x; lastY = y;
-});
-
-canvas.addEventListener('mouseup', () => { isDrawing = false; send('draw', {type:'end'}); });
-canvas.addEventListener('mouseleave', () => { isDrawing = false; });
-
-// Touch support
-canvas.addEventListener('touchstart', (e) => {
-  e.preventDefault();
-  const t = e.touches[0];
-  const r = canvas.getBoundingClientRect();
-  lastX = (t.clientX - r.left) * (canvas.width / r.width);
-  lastY = (t.clientY - r.top) * (canvas.height / r.height);
-  isDrawing = true;
-  ctx.fillStyle = brushColor;
-  ctx.beginPath();
-  ctx.arc(lastX, lastY, brushSize/2, 0, Math.PI*2);
-  ctx.fill();
-  send('draw', {type:'dot', x:lastX, y:lastY, size:brushSize, color:brushColor});
-}, {passive:false});
-
-canvas.addEventListener('touchmove', (e) => {
-  e.preventDefault();
-  if (!isDrawing) return;
-  const t = e.touches[0];
-  const r = canvas.getBoundingClientRect();
-  const x = (t.clientX - r.left) * (canvas.width / r.width);
-  const y = (t.clientY - r.top) * (canvas.height / r.height);
-  ctx.lineWidth = brushSize;
-  ctx.strokeStyle = brushColor;
-  ctx.beginPath();
-  ctx.moveTo(lastX, lastY);
-  ctx.lineTo(x, y);
-  ctx.stroke();
-  send('draw', {type:'line', x, y, size:brushSize, color:brushColor});
-  lastX = x; lastY = y;
-}, {passive:false});
-
-canvas.addEventListener('touchend', () => { isDrawing = false; send('draw', {type:'end'}); });
-
-// === TOOLS ===
-function setTool(t) {
-  document.getElementById('toolBrush').className = t==='brush'?'active':'';
-  document.getElementById('toolEraser').className = t==='eraser'?'active':'';
-}
-
-function clearCanvas() {
-  if (confirm('Clear the canvas for everyone?')) {
-    clearLocal();
-    send('clear', {});
+  // Also expose as 'peer' for convenience
+  window.peer = window.__peer;
+})();
+<\\/script>
+`;
+  // Inject before </head> or after <head>
+  if (html.includes('</head>')) {
+    return html.replace('</head>', api + '</head>');
   }
+  return api + html;
 }
 
-function clearLocal() {
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0,0,canvas.width,canvas.height);
+editor.addEventListener('input', () => {
+  clearTimeout(broadcastTimer);
+  broadcastTimer = setTimeout(() => {
+    send('update', {code: editor.value});
+  }, 400);
+});
+
+function resetCode() {
+  editor.value = DEFAULT_CODE;
+  currentCode = DEFAULT_CODE;
+  runCode();
+  send('update', {code: DEFAULT_CODE});
 }
+
+// === LISTEN FOR PEER MESSAGES FROM IFRAME ===
+window.addEventListener('message', (e) => {
+  if (e.data && e.data.type === '__peer_out') {
+    send('peer', e.data.data);
+  }
+});
 
 // === CHAT ===
 function addChat(sender, text) {
   const el = document.getElementById('chat-msgs');
-  const d = document.createElement('div');
-  d.className = 'msg';
-  d.innerHTML = '<span class="u">'+esc(sender)+'</span> '+esc(text);
-  el.appendChild(d);
-  el.scrollTop = el.scrollHeight;
+  el.innerHTML = '<b style="color:#e94560">'+esc(sender)+'</b> '+esc(text) + ' · ' + el.innerHTML;
+  if (el.innerHTML.length > 300) el.innerHTML = el.innerHTML.slice(0,300)+'…';
 }
 
 function sendChat() {
@@ -289,12 +262,6 @@ function sendChat() {
   inp.value = '';
 }
 
-function toggleChat() {
-  document.getElementById('chat-body').classList.toggle('open');
-  document.getElementById('chatToggle').textContent = 
-    document.getElementById('chat-body').classList.contains('open') ? '▴' : '▾';
-}
-
 function esc(s) { return s.replace(/[<>&]/g,function(c){return{'<':'&lt;','>':'&gt;','&':'&amp;'}[c]}); }
 
 // === ROOM ===
@@ -302,19 +269,13 @@ function joinRoom() {
   const r = document.getElementById('roomInput').value.trim();
   if (!r) return;
   roomId = r;
+  userId = Math.random().toString(36).slice(2,6);
+  editor.value = currentCode;
+  runCode();
   connect();
 }
 
-// === UI ===
-document.getElementById('brushSize').addEventListener('input', (e) => {
-  brushSize = parseInt(e.target.value);
-  document.getElementById('sizeLabel').textContent = brushSize+'px';
-});
-document.getElementById('brushColor').addEventListener('input', (e) => {
-  brushColor = e.target.value;
-});
-
-// Auto-join on load
+// Auto-join
 joinRoom();
 </script>
 </body>
