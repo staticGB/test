@@ -153,6 +153,7 @@ function runCode() {
   currentCode = editor.value;
   var code = injectPeerAPI(currentCode);
   preview.srcdoc = code;
+  send('update', {code: currentCode}); // save to relay so it persists
 }
 
 function injectPeerAPI(html) {
