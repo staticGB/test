@@ -24,8 +24,7 @@ body{background:#1a1a2e;color:#eee;font-family:-apple-system,sans-serif;height:1
 #topbar .sep{width:1px;height:22px;background:#333}
 #canvas-wrap{flex:1;display:flex;align-items:center;justify-content:center;background:#0a0a1a;position:relative;overflow:hidden}
 canvas{background:#fff;box-shadow:0 0 30px rgba(0,0,0,.5);cursor:crosshair;touch-action:none}
-#users{position:absolute;top:10px;right:10px;font-size:11px;color:#888;background:rgba(0,0,0,.6);padding:6px 10px;border-radius:6px;display:none}
-#users.show{display:block}
+#users{position:absolute;top:10px;right:10px;font-size:11px;color:#888;background:rgba(0,0,0,.6);padding:6px 10px;border-radius:6px}
 #users .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px}
 #chat{position:absolute;bottom:10px;right:10px;width:200px;background:rgba(0,0,0,.8);border-radius:8px;overflow:hidden;font-size:12px}
 #chat-header{padding:6px 10px;background:rgba(0,0,0,.4);color:#aaa;cursor:pointer;display:flex;justify-content:space-between}
@@ -62,7 +61,7 @@ canvas{background:#fff;box-shadow:0 0 30px rgba(0,0,0,.5);cursor:crosshair;touch
 
 <div id="canvas-wrap">
   <canvas id="mainCanvas" width="900" height="600"></canvas>
-  <div id="users" class="show">
+  <div id="users">
     <span class="dot" style="background:#e94560"></span> You
     <span id="otherUsers"></span>
   </div>
@@ -83,9 +82,8 @@ canvas{background:#fff;box-shadow:0 0 30px rgba(0,0,0,.5);cursor:crosshair;touch
 
 <script>
 // === CONFIG ===
-const RELAY = "wss://jump-learners-efforts-midwest.trycloudflare.com";
+const RELAY = "wss://des-spencer-modes-rated.trycloudflare.com";
 
-// === STATE ===
 const canvas = document.getElementById('mainCanvas');
 const ctx = canvas.getContext('2d');
 let ws = null;
@@ -93,13 +91,12 @@ let roomId = 'mayo';
 let userId = Math.random().toString(36).slice(2,6);
 let isDrawing = false;
 let lastX = 0, lastY = 0;
-let tool = 'brush';
 let brushSize = 4;
 let brushColor = '#e94560';
 let reconnectTimer = null;
-let peers = {};
+let remoteLast = {};
 
-// === WHITE BG ===
+// White bg
 ctx.fillStyle = '#fff';
 ctx.fillRect(0,0,canvas.width,canvas.height);
 
@@ -107,29 +104,55 @@ ctx.fillRect(0,0,canvas.width,canvas.height);
 function connect() {
   if (ws) try{ws.close()}catch(e){}
   if (!roomId) return;
-  document.getElementById('statusBadge').textContent = 'connecting…';
-  document.getElementById('statusBadge').className = 'status offline';
+  setStatus('connecting…', 'offline');
   
   ws = new WebSocket(RELAY);
   ws.onopen = () => {
     ws.send(JSON.stringify({type:'join', room:roomId}));
-    document.getElementById('statusBadge').textContent = 'live';
-    document.getElementById('statusBadge').className = 'status live';
+    setStatus('live', 'live');
     reconnectTimer = null;
   };
   
   ws.onmessage = (e) => {
-    try { var msg = JSON.parse(e.data); } catch { return; }
+    let msg;
+    try { msg = JSON.parse(e.data); } catch { return; }
+    
     switch(msg.type) {
       case 'init':
         document.getElementById('peerCount').textContent = '🟢 live';
         break;
       case 'peers':
         document.getElementById('peerCount').textContent = msg.count > 0 ? '('+msg.count+' here)' : '';
-        updatePeers(msg.count);
+        const o = document.getElementById('otherUsers');
+        o.textContent = msg.count > 1 ? '· ' + (msg.count-1) + ' other' + (msg.count>2?'s':'') : '';
         break;
       case 'draw':
-        applyDraw(msg.data);
+        if (msg.sender === userId) break;
+        // Apply the draw event using remoteLast for line continuity
+        const d = msg.data;
+        if (!d) break;
+        if (d.type === 'dot') {
+          ctx.fillStyle = d.color;
+          ctx.beginPath();
+          ctx.arc(d.x, d.y, d.size/2, 0, Math.PI*2);
+          ctx.fill();
+          remoteLast[msg.sender] = {x:d.x, y:d.y};
+        } else if (d.type === 'line') {
+          const last = remoteLast[msg.sender];
+          if (last) {
+            ctx.lineWidth = d.size;
+            ctx.strokeStyle = d.color;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            ctx.moveTo(last.x, last.y);
+            ctx.lineTo(d.x, d.y);
+            ctx.stroke();
+          }
+          remoteLast[msg.sender] = {x:d.x, y:d.y};
+        } else if (d.type === 'end') {
+          delete remoteLast[msg.sender];
+        }
         break;
       case 'clear':
         if (msg.sender !== userId) clearLocal();
@@ -141,8 +164,7 @@ function connect() {
   };
   
   ws.onclose = () => {
-    document.getElementById('statusBadge').textContent = 'reconnecting…';
-    document.getElementById('statusBadge').className = 'status offline';
+    setStatus('reconnecting…', 'offline');
     if (!reconnectTimer) reconnectTimer = setTimeout(connect, 2000);
   };
   ws.onerror = () => {};
@@ -154,6 +176,11 @@ function send(type, data) {
   }
 }
 
+function setStatus(text, cls) {
+  document.getElementById('statusBadge').textContent = text;
+  document.getElementById('statusBadge').className = 'status ' + cls;
+}
+
 // === DRAWING ===
 canvas.addEventListener('mousedown', (e) => {
   isDrawing = true;
@@ -161,12 +188,7 @@ canvas.addEventListener('mousedown', (e) => {
   lastX = (e.clientX - r.left) * (canvas.width / r.width);
   lastY = (e.clientY - r.top) * (canvas.height / r.height);
   
-  ctx.beginPath();
-  ctx.moveTo(lastX, lastY);
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  ctx.lineWidth = brushSize;
-  ctx.strokeStyle = brushColor;
+  ctx.fillStyle = brushColor;
   ctx.beginPath();
   ctx.arc(lastX, lastY, brushSize/2, 0, Math.PI*2);
   ctx.fill();
@@ -204,8 +226,7 @@ canvas.addEventListener('touchstart', (e) => {
   lastX = (t.clientX - r.left) * (canvas.width / r.width);
   lastY = (t.clientY - r.top) * (canvas.height / r.height);
   isDrawing = true;
-  ctx.lineWidth = brushSize;
-  ctx.strokeStyle = brushColor;
+  ctx.fillStyle = brushColor;
   ctx.beginPath();
   ctx.arc(lastX, lastY, brushSize/2, 0, Math.PI*2);
   ctx.fill();
@@ -231,67 +252,10 @@ canvas.addEventListener('touchmove', (e) => {
 
 canvas.addEventListener('touchend', () => { isDrawing = false; send('draw', {type:'end'}); });
 
-// === RECEIVE DRAW EVENTS ===
-function applyDraw(data) {
-  if (!data) return;
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  
-  if (data.type === 'dot') {
-    ctx.lineWidth = data.size;
-    ctx.strokeStyle = data.color;
-    ctx.fillStyle = data.color;
-    ctx.beginPath();
-    ctx.arc(data.x, data.y, data.size/2, 0, Math.PI*2);
-    ctx.fill();
-  } else if (data.type === 'line' && data.sx != null) {
-    ctx.lineWidth = data.size;
-    ctx.strokeStyle = data.color;
-    ctx.beginPath();
-    ctx.moveTo(data.sx, data.sy);
-    ctx.lineTo(data.x, data.y);
-    ctx.stroke();
-  } else if (data.type === 'line') {
-    // We handle this by keeping a 'last' per user - see below
-  }
-}
-
-// For remote lines we need a per-user last position
-const remoteLast = {};
-canvas.addEventListener('draw-event', (e) => {
-  const d = e.detail;
-  if (d.type === 'dot') {
-    ctx.fillStyle = d.color;
-    ctx.lineWidth = d.size;
-    ctx.beginPath();
-    ctx.arc(d.x, d.y, d.size/2, 0, Math.PI*2);
-    ctx.fill();
-    remoteLast[d.user] = {x:d.x, y:d.y};
-  } else if (d.type === 'line') {
-    const last = remoteLast[d.user];
-    if (last) {
-      ctx.lineWidth = d.size;
-      ctx.strokeStyle = d.color;
-      ctx.beginPath();
-      ctx.moveTo(last.x, last.y);
-      ctx.lineTo(d.x, d.y);
-      ctx.stroke();
-    }
-    remoteLast[d.user] = {x:d.x, y:d.y};
-  } else if (d.type === 'end') {
-    delete remoteLast[d.user];
-  }
-});
-
-// Override the message handler to use the custom event
-const origHandler = ws ? ws.onmessage : null;
-
 // === TOOLS ===
 function setTool(t) {
-  tool = t;
   document.getElementById('toolBrush').className = t==='brush'?'active':'';
   document.getElementById('toolEraser').className = t==='eraser'?'active':'';
-  canvas.style.cursor = 'crosshair';
 }
 
 function clearCanvas() {
@@ -304,12 +268,6 @@ function clearCanvas() {
 function clearLocal() {
   ctx.fillStyle = '#fff';
   ctx.fillRect(0,0,canvas.width,canvas.height);
-}
-
-// === PEERS ===
-function updatePeers(count) {
-  const o = document.getElementById('otherUsers');
-  o.textContent = count > 1 ? '· ' + (count-1) + ' other' + (count>2?'s':'') : '';
 }
 
 // === CHAT ===
@@ -355,54 +313,6 @@ document.getElementById('brushSize').addEventListener('input', (e) => {
 document.getElementById('brushColor').addEventListener('input', (e) => {
   brushColor = e.target.value;
 });
-
-// === OVERRIDE WS ONMESSAGE FOR CUSTOM EVENT ===
-// We need to intercept draw messages properly
-// Re-setup after connection
-let connectOrig = connect;
-connect = function() {
-  if (ws) try{ws.close()}catch(e){}
-  if (!roomId) return;
-  document.getElementById('statusBadge').textContent = 'connecting…';
-  document.getElementById('statusBadge').className = 'status offline';
-  
-  ws = new WebSocket(RELAY);
-  ws.onopen = () => {
-    ws.send(JSON.stringify({type:'join', room:roomId}));
-    document.getElementById('statusBadge').textContent = 'live';
-    document.getElementById('statusBadge').className = 'status live';
-  };
-  
-  ws.onmessage = (e) => {
-    try { var msg = JSON.parse(e.data); } catch { return; }
-    switch(msg.type) {
-      case 'init':
-        document.getElementById('peerCount').textContent = '🟢 live';
-        break;
-      case 'peers':
-        document.getElementById('peerCount').textContent = msg.count > 0 ? '('+msg.count+' here)' : '';
-        updatePeers(msg.count);
-        break;
-      case 'draw':
-        if (msg.sender === userId) break;
-        canvas.dispatchEvent(new CustomEvent('draw-event', {detail:{...msg.data, user:msg.sender}}));
-        break;
-      case 'clear':
-        if (msg.sender !== userId) clearLocal();
-        break;
-      case 'chat':
-        if (msg.data && msg.data.sender !== userId) addChat(msg.data.sender, msg.data.text);
-        break;
-    }
-  };
-  
-  ws.onclose = () => {
-    document.getElementById('statusBadge').textContent = 'reconnecting…';
-    document.getElementById('statusBadge').className = 'status offline';
-    if (!reconnectTimer) reconnectTimer = setTimeout(connect, 2000);
-  };
-  ws.onerror = () => {};
-};
 
 // Auto-join on load
 joinRoom();
