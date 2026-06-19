@@ -81,6 +81,7 @@ var userId = Math.random().toString(36).slice(2,6);
 var currentCode = DEFAULT_CODE;
 var broadcastTimer = null;
 var reconnectTimer = null;
+var _synced = false; // prevent input handler from broadcasting before init arrives
 
 // === WEBSOCKET ===
 function connect() {
@@ -101,6 +102,7 @@ function connect() {
     
     switch(msg.type) {
       case 'init':
+        _synced = true;
         peerCount.textContent = '🟢 live';
         if (msg.code != null) { editor.value = msg.code; currentCode = msg.code; runCode(); }
         break;
@@ -177,6 +179,7 @@ function injectPeerAPI(html) {
 }
 
 editor.addEventListener('input', function() {
+  if (!_synced) return; // ignore browser session restore
   clearTimeout(broadcastTimer);
   broadcastTimer = setTimeout(function() {
     runCode();
@@ -226,6 +229,9 @@ function joinRoom() {
   runCode();
   connect();
 }
+
+// Clear editor so browser session restore doesn't trigger stale broadcast
+editor.value = '';
 
 // Auto-join
 joinRoom();
