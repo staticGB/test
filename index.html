@@ -184,6 +184,8 @@ function injectPeerAPI(html) {
 editor.addEventListener('input', function() {
   if (!_synced) return; // ignore browser session restore
   if (_skipNextInput) { _skipNextInput = false; return; } // skip stale session restore
+  // Don't broadcast if the content matches the default ball code (session restore)
+  if (editor.value.indexOf('var x = 200, y = 200, vx = 3, vy = 2') !== -1) return;
   clearTimeout(broadcastTimer);
   broadcastTimer = setTimeout(function() {
     runCode();
