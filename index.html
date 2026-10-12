@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Narration Studio</title>
+<style>
+  :root {
+    --bg: #14171c; --panel: #1c2027; --field: #101318; --line: #2d333d;
+    --text: #e6e9ee; --muted: #8e97a5; --accent: #5aa9ff; --accent-strong: #3b8cf0;
+    --ok: #3fb68b; --bad: #e5666d;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    min-height: 100vh; display: flex; justify-content: center; padding: 24px 16px;
+  }
+  main { width: 100%; max-width: 720px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 22px; display: grid; gap: 18px; }
+  header { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 1.25rem; margin: 0; font-weight: 650; }
+  label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 6px; }
+  textarea, select {
+    width: 100%; background: var(--field); color: var(--text); border: 1px solid var(--line);
+    border-radius: 10px; padding: 12px 14px; font: inherit;
+  }
+  textarea { min-height: 240px; resize: vertical; font-size: 1.05rem; line-height: 1.6; }
+  textarea:focus, select:focus, button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 560px) { .row { grid-template-columns: 1fr; } }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  button {
+    font: inherit; font-weight: 600; border: 0; border-radius: 10px; padding: 12px 18px;
+    color: #fff; background: var(--accent-strong); cursor: pointer;
+  }
+  button:hover:not(:disabled) { background: var(--accent); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.secondary { background: #2c333f; }
+  button.secondary:hover:not(:disabled) { background: #384150; }
+  button.stop { background: #b9444b; }
+  button.grow { flex: 1; min-width: 180px; }
+  [hidden] { display: none !important; }
+  .range-line { display: flex; align-items: center; gap: 12px; }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  .status { font-size: .9rem; color: var(--muted); min-height: 1.3em; }
+  .bar { height: 8px; background: var(--field); border-radius: 99px; overflow: hidden; border: 1px solid var(--line); }
+  .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  .hint { font-size: .82rem; color: var(--muted); line-height: 1.5; margin: 0; }
+  #toast { position: fixed; top: 16px; right: 16px; background: #243040; border: 1px solid var(--line);
+    padding: 10px 14px; border-radius: 10px; font-size: .9rem; max-width: 320px; opacity: 0; transition: opacity .25s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+  #toast.error { background: #3a2226; border-color: #6b2f36; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<main>
+  <div class="panel">
+    <header>
+      <h1>Narration Studio</h1>
+      <button id="btn-sample" class="secondary" type="button">Insert sample story</button>
+    </header>
+
+    <div>
+      <label for="text">Text to narrate</label>
+      <textarea id="text" placeholder="Type or paste your story here."></textarea>
+    </div>
+
+    <div class="row">
+      <div>
+        <label for="engine">Voice engine</label>
+        <select id="engine">
+          <option value="kokoro">Kokoro: best quality (one-time ~90 MB download)</option>
+          <option value="system">System voices: instant, no download</option>
+        </select>
+      </div>
+      <div>
+        <label for="voice">Narrator voice</label>
+        <select id="voice"></select>
+      </div>
+    </div>
+
+    <div>
+      <label for="speed">Speed: <span id="speed-val">1.0</span>x</label>
+      <div class="range-line"><input id="speed" type="range" min="0.6" max="1.5" step="0.05" value="1"></div>
+    </div>
+
+    <div id="progress-wrap" hidden>
+      <div class="bar"><div id="progress"></div></div>
+    </div>
+    <div class="status" id="status"></div>
+
+    <div class="actions">
+      <button id="btn-play" class="grow" type="button" disabled>Generate and play</button>
+      <button id="btn-stop" class="grow stop" type="button" hidden>Stop</button>
+      <button id="btn-save" class="secondary" type="button" hidden>Save .wav</button>
+    </div>
+
+    <p class="hint" id="engine-hint"></p>
+  </div>
+</main>
+
+<script type="module">
+/* ---------- Config ---------- */
+const KOKORO_URL = "https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/+esm";
+const KOKORO_MODEL = "onnx-community/Kokoro-82M-v1.0-ONNX";
+
+const KOKORO_VOICES = [
+  ["af_heart", "Heart (US female, warm), best overall"],
+  ["af_bella", "Bella (US female, expressive)"],
+  ["af_nicole", "Nicole (US female, soft)"],
+  ["af_sarah", "Sarah (US female, clear)"],
+  ["af_sky", "Sky (US female, light)"],
+  ["am_michael", "Michael (US male, steady)"],
+  ["am_fenrir", "Fenrir (US male, strong)"],
+  ["am_puck", "Puck (US male, lively)"],
+  ["bf_emma", "Emma (UK female, polished)"],
+  ["bf_isabella", "Isabella (UK female, gentle)"],
+  ["bm_george", "George (UK male, classic)"],
+  ["bm_fable", "Fable (UK male, storyteller)"]
+];
+
+const SAMPLES = [
+  "The lantern flickered once, then steadied, and in its small circle of light the tunnel wall began to glitter. Mara pressed her palm against the stone and felt a faint warmth, as though something on the other side were breathing. She had been told the mine was empty for forty years. The painted symbols curling across the rock told a different story, and they were fresh.",
+  "By the third morning at sea, the fog had thinned enough to reveal a coastline no chart had ever shown. Cliffs of pale green rose from the water, laced with waterfalls that fell without a sound. Captain Oyelaran lowered her spyglass and said nothing. Behind her, the crew had gone quiet, the way people do when a legend turns out to be a place.",
+  "Beneath the ice, the signal repeated every eleven seconds. Dr. Reyes had logged it two hundred times before she let herself say it aloud: it was not random. She lowered the probe another meter, and the dark water below began to glow, slowly, in patient, deliberate pulses, as if something had been waiting a very long time for someone to ask."
+];
+
+/* ---------- Elements ---------- */
+const $ = id => document.getElementById(id);
+const textEl = $("text"), engineEl = $("engine"), voiceEl = $("voice"), speedEl = $("speed");
+const playBtn = $("btn-play"), stopBtn = $("btn-stop"), saveBtn = $("btn-save"), sampleBtn = $("btn-sample");
+const statusEl = $("status"), progWrap = $("progress-wrap"), progEl = $("progress"), hintEl = $("engine-hint");
+
+/* ---------- State ---------- */
+let tts = null, ttsLoading = null;
+let audioEl = null, audioUrl = null, wavBlob = null;
+let cancelled = false, busy = false;
+
+/* ---------- Helpers ---------- */
+function toast(msg, type = "info") {
+  const t = $("toast");
+  t.textContent = msg; t.className = "show " + (type === "error" ? "error" : "");
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.className = "", 4000);
+}
+function setStatus(s) { statusEl.textContent = s; }
+function setProgress(p) {
+  progWrap.hidden = p == null;
+  if (p != null) progEl.style.width = Math.max(0, Math.min(100, p)) + "%";
+}
+function invalidateAudio() {
+  wavBlob = null; saveBtn.hidden = true;
+  if (audioUrl) { URL.revokeObjectURL(audioUrl); audioUrl = null; }
+}
+function refreshPlayEnabled() { playBtn.disabled = busy || !textEl.value.trim(); }
+
+function splitText(text, maxLen = 280) {
+  const sentences = text.replace(/\s+/g, " ").trim().match(/[^.!?…]+[.!?…]*["')\]]*\s*/g) || [text];
+  const chunks = []; let cur = "";
+  for (const s of sentences) {
+    if ((cur + s).length > maxLen && cur) { chunks.push(cur.trim()); cur = ""; }
+    if (s.length > maxLen) { // very long sentence: split on commas / spaces
+      const parts = s.match(new RegExp(".{1," + maxLen + "}(\\s|$)", "g")) || [s];
+      parts.forEach(p => chunks.push(p.trim()));
+    } else cur += s;
+  }
+  if (cur.trim()) chunks.push(cur.trim());
+  return chunks.filter(Boolean);
+}
+
+function floatToWav(float32, sampleRate) {
+  const buffer = new ArrayBuffer(44 + float32.length * 2);
+  const v = new DataView(buffer);
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, "RIFF"); v.setUint32(4, 36 + float32.length * 2, true); w(8, "WAVE");
+  w(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * 2, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  w(36, "data"); v.setUint32(40, float32.length * 2, true);
+  for (let i = 0; i < float32.length; i++) {
+    const s = Math.max(-1, Math.min(1, float32[i]));
+    v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+  return new Blob([buffer], { type: "audio/wav" });
+}
+
+/* ---------- Voices ---------- */
+let systemVoices = [];
+function loadSystemVoices() {
+  systemVoices = ("speechSynthesis" in window) ? speechSynthesis.getVoices() : [];
+  if (engineEl.value === "system") fillVoices();
+}
+function fillVoices() {
+  voiceEl.innerHTML = "";
+  if (engineEl.value === "kokoro") {
+    KOKORO_VOICES.forEach(([id, label]) => voiceEl.add(new Option(label, id)));
+    hintEl.textContent = "Kokoro runs entirely on your device and needs no account or API key. The first use downloads the model once (about 90 MB). After that it is cached, and the page works offline. Generation can be slower than playback on some computers, so long texts take a while.";
+  } else {
+    const sorted = [...systemVoices].sort((a, b) =>
+      (b.localService - a.localService) || a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name));
+    sorted.forEach(v => voiceEl.add(new Option(`${v.name} (${v.lang})${v.localService ? "" : " [online]"}`, v.voiceURI)));
+    if (!sorted.length) voiceEl.add(new Option("No system voices found", ""));
+    hintEl.textContent = "Uses voices built into your operating system. Voices marked [online] need internet. Quality varies by system, and these voices can't be saved as a file.";
+  }
+}
+
+/* ---------- Kokoro ---------- */
+async function ensureKokoro() {
+  if (tts) return tts;
+  if (ttsLoading) return ttsLoading;
+  ttsLoading = (async () => {
+    setStatus("Loading voice engine...");
+    setProgress(0);
+    const { KokoroTTS } = await import(KOKORO_URL);
+    const files = {};
+    tts = await KokoroTTS.from_pretrained(KOKORO_MODEL, {
+      dtype: "q8", device: "wasm",
+      progress_callback: p => {
+        if (p.status === "progress" && p.file) {
+          files[p.file] = { loaded: p.loaded || 0, total: p.total || 0 };
+          const L = Object.values(files).reduce((a, f) => a + f.loaded, 0);
+          const T = Object.values(files).reduce((a, f) => a + f.total, 0);
+          if (T) { setProgress(L / T * 100); setStatus(`Downloading voice model: ${(L / 1e6).toFixed(0)} of ${(T / 1e6).toFixed(0)} MB (first time only)`); }
+        }
+      }
+    });
+    return tts;
+  })();
+  try { return await ttsLoading; }
+  catch (e) { tts = null; throw e; }
+  finally { ttsLoading = null; }
+}
+
+async function runKokoro(text) {
+  const engine = await ensureKokoro();
+  const chunks = splitText(text);
+  const pieces = []; let rate = 24000, total = 0;
+  const speed = parseFloat(speedEl.value);
+  for (let i = 0; i < chunks.length; i++) {
+    if (cancelled) return null;
+    setStatus(`Generating audio: part ${i + 1} of ${chunks.length}`);
+    setProgress(i / chunks.length * 100);
+    const out = await engine.generate(chunks[i], { voice: voiceEl.value, speed });
+    rate = out.sampling_rate || rate;
+    pieces.push(out.audio);
+    pieces.push(new Float32Array(Math.round(rate * 0.18))); // short pause
+    total += out.audio.length + pieces[pieces.length - 1].length;
+    await new Promise(r => setTimeout(r)); // let the UI breathe
+  }
+  const all = new Float32Array(total); let o = 0;
+  for (const p of pieces) { all.set(p, o); o += p.length; }
+  return floatToWav(all, rate);
+}
+
+/* ---------- System voices ---------- */
+function runSystem(text) {
+  return new Promise((resolve, reject) => {
+    if (!("speechSynthesis" in window)) return reject(new Error("This browser has no speech synthesis."));
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    const v = systemVoices.find(v => v.voiceURI === voiceEl.value);
+    if (v) { u.voice = v; u.lang = v.lang; }
+    u.rate = parseFloat(speedEl.value);
+    u.onend = () => resolve(); u.onerror = e => (e.error === "canceled" || e.error === "interrupted") ? resolve() : reject(new Error(e.error));
+    speechSynthesis.speak(u);
+  });
+}
+
+/* ---------- Main actions ---------- */
+function showPlaying(on) {
+  playBtn.hidden = on; stopBtn.hidden = !on;
+}
+function stopAll() {
+  cancelled = true;
+  if (audioEl) { audioEl.pause(); audioEl.currentTime = 0; }
+  if ("speechSynthesis" in window) speechSynthesis.cancel();
+  showPlaying(false);
+}
+
+async function generateAndPlay() {
+  const text = textEl.value.trim();
+  if (!text) return;
+  stopAll(); cancelled = false; invalidateAudio();
+  busy = true; refreshPlayEnabled(); showPlaying(false);
+  stopBtn.hidden = false; playBtn.hidden = true; // allow cancelling while generating
+
+  try {
+    if (engineEl.value === "kokoro") {
+      const blob = await runKokoro(text);
+      if (!blob) { setStatus("Cancelled."); setProgress(null); return; }
+      wavBlob = blob; audioUrl = URL.createObjectURL(blob);
+      audioEl = new Audio(audioUrl);
+      audioEl.onended = () => { showPlaying(false); setStatus("Finished."); };
+      saveBtn.hidden = false;
+      setProgress(null); setStatus("Playing...");
+      await audioEl.play();
+    } else {
+      setStatus("Playing with system voice...");
+      await runSystem(text);
+      setStatus("Finished.");
+      showPlaying(false);
+    }
+  } catch (e) {
+    console.error(e);
+    setProgress(null);
+    setStatus("");
+    showPlaying(false);
+    toast(engineEl.value === "kokoro"
+      ? "Couldn't load or run Kokoro. The first run needs internet to download the model. Details are in the console."
+      : "Couldn't play audio: " + e.message, "error");
+  } finally {
+    busy = false; refreshPlayEnabled();
+    if (engineEl.value === "kokoro" && !audioEl?.paused === false) { /* leave controls as set */ }
+  }
+}
+
+function saveWav() {
+  if (!wavBlob) return;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(wavBlob);
+  a.download = `narration_${voiceEl.value}.wav`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  toast("Audio saved.");
+}
+
+/* ---------- Wire up ---------- */
+engineEl.addEventListener("change", () => { stopAll(); invalidateAudio(); fillVoices(); setStatus(""); setProgress(null); });
+speedEl.addEventListener("input", () => { $("speed-val").textContent = parseFloat(speedEl.value).toFixed(2).replace(/0$/, ""); });
+textEl.addEventListener("input", () => { invalidateAudio(); refreshPlayEnabled(); });
+voiceEl.addEventListener("change", invalidateAudio);
+speedEl.addEventListener("change", invalidateAudio);
+playBtn.addEventListener("click", generateAndPlay);
+stopBtn.addEventListener("click", () => { stopAll(); setStatus("Stopped."); setProgress(null); busy = false; refreshPlayEnabled(); });
+saveBtn.addEventListener("click", saveWav);
+sampleBtn.addEventListener("click", () => {
+  textEl.value = SAMPLES[Math.floor(Math.random() * SAMPLES.length)];
+  invalidateAudio(); refreshPlayEnabled();
+});
+
+if ("speechSynthesis" in window) { speechSynthesis.onvoiceschanged = loadSystemVoices; loadSystemVoices(); }
+fillVoices();
+refreshPlayEnabled();
+
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  navigator.serviceWorker.register("./sw.js").catch(e => console.warn("Offline cache unavailable:", e));
+}
+</script>
+</body>
+</html>
